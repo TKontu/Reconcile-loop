@@ -1,3 +1,6 @@
+> **Experimental archive:** this branch preserves the expanded pattern pack for reference.
+> It is not a supported edition. The maintained lean workflow lives on `main`.
+
 # Architecture-Constrained Agent Orchestration
 
 A lightweight pattern for autonomous multi-agent engineering.
@@ -173,3 +176,28 @@ The specific runner does not matter. Executors may be Claude Code, Codex, OpenCo
 The central abstraction is:
 
 > **A controlled transition from one verified project state to the next.**
+
+
+## Use this repository
+
+Start with the [adoption guide](docs/adoption.md), then follow the
+[round workflow](docs/workflow.md). The [pattern catalog](docs/patterns.md) explains the invariants
+and the [extraction notes](docs/provenance.md) describe their origin and scope.
+
+Copy and adapt the [project contract](templates/AGENTS.md),
+[architecture](templates/architecture.md), [backlog](templates/todo.md), and
+[item detail](templates/item.md). For each round use the [assignment](templates/assignment.md),
+[round record](templates/round.md), [PR evidence](templates/pull-request.md),
+[review](templates/review.md), [reconciliation](templates/reconcile.md), and
+[handoff](templates/handoff.md) templates.
+
+The [versioned protocol](SPEC.md) defines the stage contracts. The
+[command catalog](docs/agents/README.md) includes 30 reusable procedures with skill and slash-command
+entry points. Begin with `bootstrap` to adapt the pack to your project. The
+[worked example](examples/session-service/README.md) shows structured round and result artifacts.
+The pack provides agent instructions and schemas; an unattended supervisor is not implemented.
+
+
+For unattended operation, also adopt the [supervision contract](docs/supervision.md) and
+[standing decision policy](docs/decision-policy.md). These cover fresh sessions, dispatch,
+halt/recovery, and queued decisions; runner implementations remain project-specific.

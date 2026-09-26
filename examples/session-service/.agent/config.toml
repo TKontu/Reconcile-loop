@@ -1,0 +1,28 @@
+# Fictional documentation-only project profile. No service or runner integration.
+version = 1
+default_branch = "main"
+remote = "origin"
+
+[paths]
+readme = "README.md"
+architecture = "architecture/target.md"
+backlog = "backlog/frontier.md"
+items = "backlog/items"
+decisions = "architecture/decisions"
+policy = "docs/agents/policy.md"
+evidence = "docs/reconcile-log.md"
+handoff = "HANDOFF.md"
+rounds = ".agent-runs"
+
+[planning]
+parallelism = 1
+
+[lanes.offline]
+exclusive = false
+resources = []
+
+[[verification]]
+id = "local"
+command = ["git", "diff", "--check"]
+environment = "offline"
+required = true

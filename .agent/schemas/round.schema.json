@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Reconcile-loop v1 round",
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "round_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "base_sha": {
+      "type": "string",
+      "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+    },
+    "state": {
+      "enum": [
+        "planned",
+        "executing",
+        "reviewing",
+        "merging",
+        "reconciling",
+        "closed",
+        "blocked"
+      ]
+    },
+    "assignments": {
+      "type": "array",
+      "items": {
+        "$ref": "assignment.schema.json"
+      },
+      "minItems": 1
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "final_main_sha": {
+      "type": "string",
+      "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+    },
+    "reconcile_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "handoff_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "closure_evidence": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Project-specific namespaced policy; cannot override core invariants."
+    }
+  },
+  "required": [
+    "version",
+    "round_id",
+    "revision",
+    "base_sha",
+    "state",
+    "assignments"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "blocked"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "closed"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "final_main_sha",
+          "reconcile_ref",
+          "handoff_ref",
+          "closure_evidence"
+        ],
+        "properties": {
+          "assignments": {
+            "items": {
+              "properties": {
+                "state": {
+                  "enum": [
+                    "merged",
+                    "cancelled"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

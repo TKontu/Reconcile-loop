@@ -1,0 +1,24 @@
+# Scaffold, not a valid runtime manifest until placeholders are replaced and hashes computed.
+version = 1
+round_id = "ROUND-ID"
+revision = 1
+base_sha = "FULL-GIT-SHA"
+state = "planned"
+
+[[assignments]]
+version = 1
+round_id = "ROUND-ID"
+id = "A1"
+item = "TASK-001"
+base_sha = "FULL-GIT-SHA"
+runner = "manual"
+lane = "offline"
+branch = "task/short-name"
+state = "planned"
+spec = "specs/A1.md"
+packet = "prompts/A1.md"
+spec_sha256 = "COMPUTED-SPEC-DIGEST"
+packet_sha256 = "COMPUTED-PACKET-DIGEST"
+attempt = 1
+owned_records = []
+resources = []

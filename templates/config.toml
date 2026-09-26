@@ -1,0 +1,29 @@
+# Copy to .agent/config.toml and adapt; commands below are unresolved until bootstrap.
+version = 1
+default_branch = "main"
+remote = "origin"
+
+[paths]
+readme = "README.md"
+architecture = "architecture/target.md"
+backlog = "backlog/frontier.md"
+items = "backlog/items"
+decisions = "architecture/decisions"
+policy = "docs/agents/policy.md"
+evidence = "docs/reconcile-log.md"
+handoff = "HANDOFF.md"
+rounds = ".agent-runs"
+
+[planning]
+parallelism = 1
+
+[lanes.offline]
+exclusive = false
+resources = []
+
+[[verification]]
+id = "local"
+# Bootstrap must supply a real argv; empty fails the project schema on purpose.
+command = []
+environment = "offline"
+required = true
