@@ -84,6 +84,102 @@ class RoundTests(unittest.TestCase):
         path.write_text(json.dumps(data))
         return path
 
+    def blocked_result(self, reason="Required fixture is missing"):
+        path = self.submit(status="blocked", reason=reason)
+        data = json.loads(path.read_text())
+        for key in ("head_sha", "pr", "checks"):
+            del data[key]
+        path.write_text(json.dumps(data))
+        return path
+
+    def test_blocked_result_needs_no_pr_and_keeps_round_open(self):
+        self.start()
+        self.cli("record", "R1", "--result", str(self.blocked_result()))
+        status = json.loads(self.cli("status", "R1").stdout)
+        assignment = status["assignments"]["A1"]
+        self.assertEqual(assignment["state"], "blocked")
+        saved = json.loads(
+            (self.repo / ".agent-runs/R1" / assignment["results"][-1]).read_text()
+        )
+        self.assertEqual(saved["reason"], "Required fixture is missing")
+        self.assertNotIn("pr", saved)
+        self.cli("init", "R2", "--base", "main", ok=False)
+        self.cli(
+            "close",
+            "R1",
+            "--main",
+            "main",
+            "--reconciliation",
+            "README.md",
+            "--handoff",
+            "HANDOFF.md",
+            "--evidence",
+            "checks",
+            ok=False,
+        )
+
+    def test_blocked_result_requires_reason(self):
+        self.start()
+        for reason in (None, "", " "):
+            path = self.blocked_result(reason)
+            if reason is None:
+                data = json.loads(path.read_text())
+                del data["reason"]
+                path.write_text(json.dumps(data))
+            rejected = self.cli("record", "R1", "--result", str(path), ok=False)
+            self.assertIn("reason", rejected.stderr)
+        self.assertEqual(self.manifest()["assignments"]["A1"]["results"], [])
+
+    def test_blocked_result_invalidates_older_candidate_and_can_resume(self):
+        self.start()
+        self.cli("record", "R1", "--result", str(self.submit()))
+        self.cli("record", "R1", "--result", str(self.blocked_result()))
+        self.cli(
+            "resolve",
+            "R1",
+            "A1",
+            "--outcome",
+            "merged",
+            "--head",
+            self.base,
+            "--merge",
+            self.base,
+            "--evidence",
+            "Old candidate review",
+            ok=False,
+        )
+        self.cli("record", "R1", "--result", str(self.submit(status="result-ready")))
+        assignment = self.manifest()["assignments"]["A1"]
+        self.assertEqual(assignment["state"], "result-ready")
+        self.assertEqual(len(assignment["results"]), 3)
+        blocked = json.loads(
+            (self.repo / ".agent-runs/R1" / assignment["results"][1]).read_text()
+        )
+        self.assertEqual(blocked["status"], "blocked")
+
+    def test_blocked_assignment_can_cancel_but_not_reopen(self):
+        self.start()
+        path = self.blocked_result()
+        self.cli("record", "R1", "--result", str(path))
+        self.cli(
+            "resolve",
+            "R1",
+            "A1",
+            "--outcome",
+            "cancelled",
+            "--evidence",
+            "Worker stopped",
+        )
+        self.cli("record", "R1", "--result", str(path), ok=False)
+        self.assertEqual(self.manifest()["assignments"]["A1"]["state"], "cancelled")
+
+    def test_unknown_result_status_is_rejected(self):
+        self.start()
+        self.cli(
+            "record", "R1", "--result", str(self.submit(status="ready-ish")), ok=False
+        )
+        self.assertEqual(self.manifest()["assignments"]["A1"]["results"], [])
+
     def test_init_pins_base_and_status_is_read_only(self):
         self.cli("init", "R1", "--base", "main")
         self.assertEqual(self.manifest()["base_sha"], self.base)

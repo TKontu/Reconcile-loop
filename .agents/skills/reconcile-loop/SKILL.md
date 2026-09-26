@@ -5,7 +5,8 @@ description: Bootstrap or run an architecture-constrained development round with
 
 # Reconcile-loop
 
-Read the target project's AGENTS.md and `.agent/config.toml`, then the selected phase below.
+Read the target project's existing AGENTS.md and `.agent/config.toml` if present, then the selected
+phase below. Bootstrap establishes missing configuration before subsequent phases depend on it.
 Resolve packaged links relative to this skill file. User scope and existing authorization govern
 external actions; this skill does not independently grant publication or merge permission.
 

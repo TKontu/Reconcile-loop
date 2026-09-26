@@ -23,5 +23,10 @@ tracked reports as well as the local result. The coordinator imports it with:
 python3 scripts/round.py record ROUND --result /path/to/result.json
 ```
 
+If execution cannot proceed, submit a result through the same command with only `assignment`,
+`base_sha`, `packet_sha256`, `status: "blocked"` and a nonempty `reason` describing the missing
+requirement and available evidence. No PR, head or completed checks are needed. This leaves the
+assignment blocked until a later candidate result or explicit cancellation; it cannot close the round.
+
 A revised head needs another result and review; old results remain available. Stop at the PR and
 required executor checks. Never self-merge or claim unrun checks passed.

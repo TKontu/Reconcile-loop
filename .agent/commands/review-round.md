@@ -3,8 +3,11 @@
 Read project AGENTS.md and `.agent/config.toml`; follow [the protocol](../../SPEC.md).
 
 Read `round.py status ROUND`, original packets, result files and pinned PR diffs. Verify the actual
-PR head matches the submitted result and that every required check in the assignment/config ran on
-that head. A list of passed checks may still omit a required gate. API errors mean unknown status.
+PR head matches the submitted head, the PR’s source branch matches the assigned branch, and the
+candidate contains the pinned assignment base in its ancestry. Also verify every required check in
+the assignment/config ran on that head. A list of passed checks may still omit a required gate.
+API errors mean unknown status. A blocked result has no reviewable candidate; read its recorded
+reason and resolve the blocker or explicitly cancel the assignment.
 
 Compare behavior with the target and acceptance. Check concrete failure cases, scope, default changes,
 production connections, and resource/scale limits when relevant. Keep review proportional to risk;
