@@ -1,18 +1,14 @@
 # Handoff
-Generated-UTC: <YYYY-MM-DDTHH:MM:SSZ>
-Main-SHA: <full main SHA>
+Generated-UTC: <timestamp>
+Main-SHA: <full final main SHA>
 
 ## Round delta
-<Merged results and changed records; link durable evidence.>
+<Accepted outcomes and links to durable evidence.>
 
-## Active PRs and conflicts
-<Links and non-obvious conflicts, or none.>
-
-## Non-obvious decisions or blockers
-<Expensive-to-rediscover facts; first-execution marker naming stages still untested at scale.>
+## Open work
+<Active conflicts, decisions, unverified behavior/scale and owners.>
 
 ## Next action
-<One exact action with authoritative links.>
+<One exact action with canonical references.>
 
-<!-- Keep the completed handoff at most 50 lines / 500 words. It is advisory and ignored locally.
-Do not copy architecture, frontier prose, transcripts, full logs, or credentials into it. -->
+<!-- Advisory; at most 50 lines / 500 words. No copied architecture, full logs or secrets. -->

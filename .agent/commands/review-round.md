@@ -1,22 +1,18 @@
 # review-round
 
-Follow [the shared contract](common.md).
+Read project AGENTS.md and `.agent/config.toml`; follow [the protocol](../../SPEC.md).
 
-Input: explicit round ID.
+Read `round.py status ROUND`, original packets, result files and pinned PR diffs. Verify the actual
+PR head matches the submitted result and that every required check in the assignment/config ran on
+that head. A list of passed checks may still omit a required gate. API errors mean unknown status.
 
-Read the ledger and resolve PRs by recorded branch/identity. API failures or missing PRs are unknown
-or incomplete, not accepted work. Verify each base/spec digest, assigned scope, owned records and
-actual PR head. Use [pr-verdict](pr-verdict.md) or [review](review.md) according to configured review
-policy; a prior review of another head is stale.
+Compare behavior with the target and acceptance. Check concrete failure cases, scope, default changes,
+production connections, and resource/scale limits when relevant. Keep review proportional to risk;
+multiple agent panels are optional. Record findings with locations and evidence.
 
-Require all owed gates for the reviewed head. Start deferred integration only with the configured
-safe environment/trigger and authorization; do not assume a magic label exists. Record skips and
-outstanding owners. Inspect sibling interactions and changes in main since the round base.
+Return ready, needs-fix or blocked, with a head-bound review reference. For repairs, send a bounded
+request without silently changing the assignment. A new result invalidates the old review. Skipped
+or unavailable required checks cannot count as passes. Do not merge during review.
 
-Record ready, awaiting executor fix, or blocked with evidence in the round ledger. Small corrections
-are allowed only within the existing editing authority; after any change refresh affected review and
-checks. Route design/scope changes to planning and supply a bounded fix request for larger defects.
-Stop with per-PR readiness and decisions owed. No merging in this phase.
-
-Only the coordinator records manifest transitions; keep reviews bound to current result attempt and
-head. Follow [the protocol states](../../SPEC.md) and reject stale or mismatched identities.
+The coordinator records the final reviewed-and-merged outcome only after the separate merge phase.
+Review notes live in the PR or a tracked record, not a second editable status registry.

@@ -1,16 +1,9 @@
-# TASK-001: <Outcome>
+# <Item ID>: <outcome>
 
-## Authoritative references
-<Architecture sections and approved decisions; status stays in the registry.>
+Status and dependencies live in the canonical backlog, not duplicated here.
 
-## Objective and scope
-<Measurable behavior, inclusions, non-goals, and dependencies.>
-
-## Acceptance
-<Observable criteria; checks, environment, skip policy, and verification owner.>
-
-## Connections and scale
-<Production callers, data producers/consumers, representative cardinality and resource bounds.>
-
-## Evidence and residuals
-<PR/report links, revision, as-of date, actual results, untested envelope, and owed follow-ups.>
+- Target references: <architecture sections and decisions>
+- Objective: <observable outcome>
+- Scope / non-goals: <boundaries>
+- Acceptance: <checks, environment and expected behavior>
+- Evidence / residuals: <PR/report links and remaining work after execution>

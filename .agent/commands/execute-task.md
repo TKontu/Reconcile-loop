@@ -1,24 +1,27 @@
 # execute-task
 
-Follow [the shared contract](common.md).
+Read project AGENTS.md and `.agent/config.toml`; follow [the protocol](../../SPEC.md).
 
-Input: complete immutable assignment packet.
+Input: complete packet and its expected SHA-256, delivered by the planner.
 
-Verify project contract/profile, packet identity, scope and provided base before creating the branch
-in a clean isolated workspace. Compare the pinned base with fetched default branch; return drift to
-planning. Read the complete item detail and named architecture sections. Confirm artifacts, service
-access and required gates are provisioned. Inspect source callers and producer/consumer boundaries.
+Verify the packet digest, assigned base and branch in a separate clean checkout. Read AGENTS.md,
+configuration, full item detail and cited architecture. Resolve missing artifacts or service access
+before dependent work; return scope/target conflicts to the planner. Routine authorized implementation
+choices do not require repeated approval.
 
-For behavior changes follow [tdd](tdd.md); for faults use [debug](debug.md). Implement only assigned
-scope. Docs-only work uses relevant structural/consistency checks. Record actual evidence and scale
-limits. Follow [verify](verify.md), [review](review.md), and [secrets-check](secrets-check.md) before
-[commit-push-pr](commit-push-pr.md) when publication is authorized by the assignment/user.
+For behavior changes demonstrate the intended failing test, implement the smallest sufficient fix,
+and run targeted checks. Documentation uses relevant structural checks. Inspect production callers
+and data boundaries when applicable. Run the assigned verification in its safe environment; record
+skips/failures honestly. Update only records explicitly assigned to you.
 
-Update only named records when permitted. An implementation PR does not make an unmerged item done
-under a merge-based acceptance contract. Return scope conflicts and reserved decisions to planning;
-continue only independent authorized work. Stop at the PR and required executor checks, or report
-specific unavailable gates and their owner. Never self-merge or silently waive acceptance.
+Review the diff for defects, secrets and private material. Commit/push/open a PR when the assignment
+or user authorizes publication. Return [result metadata](../../templates/result.json), including the
+actual head, packet digest, PR and command evidence. Required acceptance evidence stays in the PR or
+tracked reports as well as the local result. The coordinator imports it with:
 
-Return attempt-specific structured result metadata matching [the result schema](../schemas/result.schema.json),
-including actual head, environment, command and evidence. Submit it to the coordinator; do not edit
-the planner manifest. Put durable evidence in the PR even if the local result is lost.
+```sh
+python3 scripts/round.py record ROUND --result /path/to/result.json
+```
+
+A revised head needs another result and review; old results remain available. Stop at the PR and
+required executor checks. Never self-merge or claim unrun checks passed.

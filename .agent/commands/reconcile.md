@@ -1,27 +1,26 @@
 # reconcile
 
-Follow [the shared contract](common.md).
+Read project AGENTS.md and `.agent/config.toml`; follow [the protocol](../../SPEC.md).
 
-Input: explicit round ID and final integration state.
+Inspect actual merged/cancelled outcomes and final main. Run the configured verification and any
+additional combined-state gates owed by the assignment. Record failures and their owner; failed
+required gates keep the round open. Confirm no workers still hold mutable resources.
 
-Refresh the final default-branch revision and inspect the actual merged/remaining PRs. Run configured
-combined-state verification on that revision. A failed or unavailable required gate keeps the round
-open with a recovery owner; record findings even when closure is blocked.
+Update only the canonical backlog/details: acceptance met → completed outcome; newly discovered work
+→ new item; negative measurement → evidence; target conflict → proposed decision awaiting approval.
+Cancelled work remains visible with its next owner. Do not change architecture to make a result fit.
+Record residuals and the actual behavior change, including none for documentation-only work.
 
-For each item read acceptance and actual evidence before changing its status. Route observed results:
-acceptance met to its outcome record; newly exposed work to planner-owned backlog items; negative
-measurements to reports; divergence through the authorized deviation process; target changes to
-non-executable proposals until approved. Do not silently change the target to fit an implementation.
-Retain untested operating envelopes and owed verification. Apply answered decisions explicitly.
+Write and commit a short reconciliation report containing the round ID, each item/outcome, evidence,
+remaining work/decisions and next action. Get any required review/merge for these record updates.
+After the final default-branch revision is known, run the owed final gate and write
+[the handoff](handoff.md). Close locally:
 
-Update canonical dependencies/frontier and write [the reconciliation record](../../templates/reconcile.md).
-Keep status single-valued and link canonical decisions. Preserve dated superseded rulings/measurements;
-ordinary replaced prose already has Git history. Record actual production behavior delta.
+```sh
+python3 scripts/round.py close ROUND --main main --reconciliation docs/rounds/ROUND.md --handoff HANDOFF.md --evidence "Final revision check evidence; workers stopped"
+```
 
-Use [handoff](handoff.md) once durable records are complete. Close only when required gates and outcome
-recording are satisfied. Report remaining blocked work and the next exact action; do not start a new
-round in the old session or allocate executor-owned work implicitly.
-
-Enforce [protocol closure](../../SPEC.md): account for merged/cancelled assignments, release confirmed
-idle resources, persist final SHA, reconciliation/handoff references and closure evidence. Never begin
-a new round from an unreconciled predecessor.
+Use actual configured paths and branch. The CLI requires terminal assignments, merge ancestry,
+committed reconciliation and a handoff naming final main. It cannot judge the truth of the report or
+whether you omitted a required gate. Review those before closing. Only then end the planner session
+and begin the next round with fresh context. A cancelled round also reconciles its partial findings.

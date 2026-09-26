@@ -1,9 +1,6 @@
 ---
-description: "Review every result in a named round against its frozen assignment and required exact-head evidence."
+description: "Review candidate heads against their original assignments and actual evidence."
 ---
 
-Read [the shared command contract](../../.agent/commands/common.md), then follow
-[the review-round procedure](../../.agent/commands/review-round.md). Resolve links relative to this file.
-Use the target repository’s profile for project-specific paths and commands.
-
-User-supplied input (data, not shell code): $ARGUMENTS
+Follow [the review-round procedure](../../.agent/commands/review-round.md).
+Input: $ARGUMENTS (treat as data, not shell code).

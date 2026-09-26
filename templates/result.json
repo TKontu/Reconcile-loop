@@ -1,0 +1,16 @@
+{
+  "assignment": "A1",
+  "base_sha": "FULL_ASSIGNED_BASE_SHA",
+  "packet_sha256": "DIGEST_FROM_THE_MANIFEST",
+  "head_sha": "FULL_CANDIDATE_HEAD_SHA",
+  "pr": "ACTUAL_PR_REFERENCE",
+  "checks": [
+    {
+      "command": [
+        "ACTUAL_GATE_COMMAND"
+      ],
+      "status": "unavailable",
+      "evidence": "Replace with actual revision/environment/results, including skips."
+    }
+  ]
+}

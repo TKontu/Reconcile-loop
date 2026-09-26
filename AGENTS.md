@@ -1,21 +1,16 @@
 # Reconcile-loop contributor contract
 
-This repository contains a vendor-neutral development pattern, documentation, and templates.
-It is not an agent runner or a copy of an application's architecture or backlog.
+This repository maintains the lean workflow, phase instructions, templates and local round CLI.
+Read README.md and SPEC.md. Keep one maintained version; expanded features remain in the archived
+`docs/standalone-patterns` branch until a demonstrated need justifies adding them here.
 
-- Read README.md, then docs/workflow.md and the relevant template before editing.
-- Keep the existing conceptual overview intact; put operational detail in linked guides.
-- Keep examples fictional and portable. Do not copy credentials, private data, infrastructure
-  addresses, product backlogs, or project-specific decision IDs into this repository.
-- Keep one definition of each rule; templates link to guides rather than inventing new policy.
-- Clearly distinguish manual conventions from implemented enforcement. There is no bundled CLI,
-  supervisor, lease service or CI workflow. Skill/command entry points are instruction wrappers.
-- SPEC.md owns the protocol; `.agent/commands/` owns phase procedures; `.agent/schemas/` owns
-  structural contracts. Keep wrappers thin and verify examples against the schemas.
-- Preserve unrelated changes. Use a separate branch for contributions; never force-push.
-- For documentation changes, check relative links, template consistency, and git diff --check.
-  For future executable tooling, demonstrate a failing behavior test before implementing it and
-  run targeted tests. Do not claim checks or automation that have not actually run.
-- Review the diff for secrets and identifiable private source material before publishing.
+- `.agent/commands/` owns phase procedures; runner wrappers point there. Avoid duplicate policy.
+- Preserve the protocol's isolation, evidence and reconciliation guarantees. Keep project-specific
+  rules, generic development helpers and unattended supervision out of the lean core.
+- For CLI behavior changes demonstrate a failing test first, implement the smallest fix, then run
+  `python3 -m unittest discover -s tests`. Run `git diff --check` and inspect links before publishing.
+- Review staged changes for secrets and private source material. Preserve unrelated work; never
+  force-push. Do not claim local metadata checks prove external review, CI, or merge correctness.
 
-The adoption contract in templates/AGENTS.md is for consuming projects, not this pattern library.
+For adopting projects, merge templates/AGENTS.md into their own instructions. This contributor file
+is not a replacement for an application's operating contract.

@@ -1,203 +1,66 @@
-> **Experimental archive:** this branch preserves the expanded pattern pack for reference.
-> It is not a supported edition. The maintained lean workflow lives on `main`.
+# Reconcile-loop
 
-# Architecture-Constrained Agent Orchestration
+A small repo-native workflow for architecture-constrained agent engineering.
 
-A lightweight pattern for autonomous multi-agent engineering.
-
-> **Agents are disposable. Project state is durable.**
-
-The system works in short rounds instead of relying on one long-lived agent or a fully preplanned project.
+> Agents are disposable. Project state is durable.
 
 ```text
-target architecture
-      ↓
-current frontier
-      ↓
-plan round
-      ↓
-execute
-      ↓
-review
-      ↓
-merge
-      ↓
-reconcile
-      ↓
-update backlog
-      ↓
-fresh planner
-      ↓
-repeat
+architecture + current frontier
+  → plan → isolated execution → review → merge → reconcile
+  → fresh planner → repeat
 ```
 
-## Core idea
+**A round ends when its observations are reconciled into project state, not merely when its PRs merge.**
+The architecture defines the target; one backlog records current status and dependencies. Assignments
+bound execution, PRs carry evidence, and a fresh planner reconstructs state without previous chats.
+Only the next executable frontier needs detailed planning.
 
-The repository is the source of truth.
+## Adopt it
 
-Durable state lives in:
+Bring your own architecture, README and backlog. Ask an agent to follow
+[bootstrap](.agent/commands/bootstrap.md). It maps existing paths and verification into
+[the config template](.agent/config.example.toml), adapts [AGENTS.md](templates/AGENTS.md), and prepares
+one small executable item. Your project need not adopt any particular taxonomy, stack or agent vendor.
 
-- architecture and design constraints
-- backlog and dependencies
-- assignment contracts
-- branches and pull requests
-- tests and execution evidence
-- bounded handoff state
+The pack contains:
 
-Agent conversations are not project memory.
+- [A short protocol](SPEC.md) and the eight [phase procedures](.agent/commands/bootstrap.md).
+- [Assignment](templates/assignment.md), [result](templates/result.json),
+  [item](templates/item.md) and [handoff](templates/handoff.md) templates.
+- A standard-library [round CLI](scripts/round.py) for local records and packet/result checks.
+- One [worked round](examples/one-round.md).
 
-A fresh planner should be able to reconstruct the current state without access to previous sessions.
+Copy/merge `.agent/`, `scripts/round.py`, `templates/`, `SPEC.md` and `examples/one-round.md`,
+preserving their relative paths.
+Keep your project's README and merge its operating contract from the template. Optional entry points
+are one `.agents/skills/reconcile-loop/` skill and eight `.claude/commands/` wrappers. All use the same
+canonical procedures. If your runner does not discover them, read the procedure directly as a prompt.
+Ignore `.agent-runs/` and HANDOFF.md; keep durable findings in tracked records or PRs.
 
-## Workflow
+## Run a round
 
-A round typically follows:
+| Phase | Contract |
+| --- | --- |
+| [takeoff](.agent/commands/takeoff.md) | Reconstruct current state; no selection or mutations |
+| [plan-round](.agent/commands/plan-round.md) | Choose executable work and produce packets; no execution |
+| [execute-task](.agent/commands/execute-task.md) | Implement in isolation and return evidence; no merge |
+| [review-round](.agent/commands/review-round.md) | Verify current heads against scope and acceptance |
+| [merge-round](.agent/commands/merge-round.md) | Merge authorized reviewed changes serially |
+| [reconcile](.agent/commands/reconcile.md) | Update project truth and close the round |
+| [handoff](.agent/commands/handoff.md) | Record a bounded delta for the next fresh session |
 
-```text
-/takeoff
-/plan-round
-agent execution
-/review-round
-/merge-round
-/reconcile
-```
+Planner decisions remain with the planner; executors own only assigned work. Existing authorization
+applies; reserved decisions block dependent work while independent authorized work can continue.
 
-### `/takeoff`
+The CLI requires Python 3.11+ and Git. Run `python3 scripts/round.py --help`. It does not launch agents,
+run your tests, approve work, contact the PR host, merge branches or manage service locks. Use one
+coordinator and run ledger writes serially. Manual packet delivery is supported; unattended
+supervision can be added later against the same contracts.
 
-Starts a fresh planning session and reconstructs current state from the repository, backlog, PRs, and handoff.
+## Maintain this pack
 
-### `/plan-round`
+Run `python3 -m unittest discover -s tests` and `git diff --check`. The tests use temporary local Git
+repositories; no service, network, third-party Python dependency or agent runtime is required.
 
-Selects the next executable and parallel-safe work and creates bounded assignments.
-
-Each assignment defines:
-
-- objective
-- scope and non-goals
-- authoritative references
-- base revision
-- acceptance criteria
-- required validation
-
-### Execution
-
-Executors work independently in isolated branches, worktrees, containers, or other environments.
-
-They return durable results such as:
-
-```text
-code
-tests
-measurements
-PRs
-```
-
-### `/review-round`
-
-Checks the implementation against the assignment, architecture, tests, and acceptance criteria.
-
-### `/merge-round`
-
-Integrates accepted work.
-
-### `/reconcile`
-
-Updates project state based on what actually happened.
-
-Reconciliation may:
-
-- close completed work
-- expose blocked dependencies
-- create new implementation tasks
-- create investigations
-- record failed experiments
-- surface architecture decisions for human approval
-
-This means the project does **not** need to be planned end-to-end.
-
-Only the current frontier needs to be sufficiently specified.
-
-## Fresh sessions
-
-After reconciliation, the planner session is discarded.
-
-The next planner starts from durable project state:
-
-```text
-Git
-architecture
-backlog
-PR state
-handoff
-```
-
-This reduces stale assumptions and prevents conversation history from becoming an undocumented dependency.
-
-## Separation of responsibilities
-
-```text
-Supervisor
-  manages lifecycle and waits for completion
-
-Planner
-  decides what should happen next
-
-Executors
-  perform bounded work
-```
-
-The supervisor should remain simple. It manages liveness, not engineering judgment.
-
-A typical loop is:
-
-```text
-start planner
-→ /takeoff
-→ /plan-round
-→ dispatch executors
-→ wait
-→ /review-round
-→ /merge-round
-→ /reconcile
-→ stop planner
-→ start fresh planner
-```
-
-## Why it generalizes
-
-The pattern works for any project where:
-
-- the target architecture or desired state is explicit
-- work can be expressed as bounded increments
-- completion can be verified
-- results can be reconciled back into durable project state
-
-The specific runner does not matter. Executors may be Claude Code, Codex, OpenCode, humans, CI jobs, or specialized tools.
-
-The central abstraction is:
-
-> **A controlled transition from one verified project state to the next.**
-
-
-## Use this repository
-
-Start with the [adoption guide](docs/adoption.md), then follow the
-[round workflow](docs/workflow.md). The [pattern catalog](docs/patterns.md) explains the invariants
-and the [extraction notes](docs/provenance.md) describe their origin and scope.
-
-Copy and adapt the [project contract](templates/AGENTS.md),
-[architecture](templates/architecture.md), [backlog](templates/todo.md), and
-[item detail](templates/item.md). For each round use the [assignment](templates/assignment.md),
-[round record](templates/round.md), [PR evidence](templates/pull-request.md),
-[review](templates/review.md), [reconciliation](templates/reconcile.md), and
-[handoff](templates/handoff.md) templates.
-
-The [versioned protocol](SPEC.md) defines the stage contracts. The
-[command catalog](docs/agents/README.md) includes 30 reusable procedures with skill and slash-command
-entry points. Begin with `bootstrap` to adapt the pack to your project. The
-[worked example](examples/session-service/README.md) shows structured round and result artifacts.
-The pack provides agent instructions and schemas; an unattended supervisor is not implemented.
-
-
-For unattended operation, also adopt the [supervision contract](docs/supervision.md) and
-[standing decision policy](docs/decision-policy.md). These cover fresh sessions, dispatch,
-halt/recovery, and queued decisions; runner implementations remain project-specific.
+Only `main` is maintained. The [expanded experimental snapshot](https://github.com/TKontu/Reconcile-loop/tree/docs/standalone-patterns)
+is retained for reference and receives no parallel feature development.

@@ -1,8 +1,6 @@
-# Local round state and operator configuration
 .agent-runs/
 HANDOFF.md
 .env
 .env.*
 !.env.example
-.worktrees/
 __pycache__/

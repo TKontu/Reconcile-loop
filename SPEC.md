@@ -1,163 +1,88 @@
-# Reconcile-loop protocol, version 1
+# Lean protocol
 
-This specification defines repo-native contracts for architecture-constrained development. Git,
-files and a PR interface are sufficient for manual operation. The shipped commands are agent
-instructions; lifecycle automation and project-specific verification remain separate implementations.
+## Authority and roles
 
-**Every completed round reconciles observations into canonical project state before another round
-begins.** Merged code alone does not close a round. Fresh planners must recover without prior chats.
+The project config points to its approved architecture, one canonical backlog, verification command
+and local merge policy. Linked item details carry complete acceptance. Source and checks establish
+actual behavior; neither a handoff nor a conversation replaces these records.
 
-## Five objects and their authority
+The planner selects work, assigns ownership, reviews outcomes and updates cross-item state. Executors
+work in isolated checkouts and return evidence. The designated reviewer/operator authorizes integration.
+An agent's ready verdict is not merge permission. Routine choices within authorized scope proceed;
+target changes and reserved actions follow project policy.
 
-| Object | Responsibility | Representation |
+## One round, three records
+
+| Record | Contents | Owner |
 | --- | --- | --- |
-| Project | Locations, approved constraints, verification and policy | `.agent/config.toml` plus referenced canonical documents |
-| Frontier | Current item status, dependencies, objective and acceptance | One canonical registry and linked details; optional normalized snapshot |
-| Round | Runtime coordination at one pinned base | `.agent-runs/<id>/round.toml` |
-| Assignment | Frozen task contract plus runtime ownership/state | One manifest entry and immutable spec/packet |
-| Result | Executor observations and revision-bound evidence | `results/<assignment>-<attempt>.json` |
+| `.agent-runs/ROUND/round.json` | Version, ID, pinned base, open/closed, assignments and outcomes | Coordinator |
+| `prompts/A1.md` | Complete assignment with identity, scope, resources and acceptance | Planner, immutable after delivery |
+| `results/A1-1.json` | Assignment/base/packet identity, candidate head, PR and check evidence | Executor submits; coordinator imports |
 
-The architecture owns the approved target. The backlog owns status/dependencies. Source and tests
-establish actual behavior. Approved decisions authorize changes; neither a result nor a supervisor
-changes their authority. Markdown can hold reasoning, specifications and review reports. A supervisor
-consumes structured manifests/results and explicit artifact references, never parses prose for success.
+The round manifest is the only runtime status record. Markdown carries scope and reasoning. No
+supervisor must interpret prose to guess completion. The CLI records JSON with version 1; unknown
+manifest versions fail. Project semantics such as priority labels and lane names stay in assignment
+prose/config rather than a mandatory taxonomy. Paths remain configurable for authoritative documents;
+local round artifacts use the fixed `.agent-runs/` convention.
 
-Paths are configurable. New projects may use `architecture/target.md`, `architecture/decisions/`,
-`backlog/frontier.md` and `backlog/items/`; existing projects may retain architecture.md and todo.md.
-A frontier snapshot is a version-bound export of the canonical registry, not a second editable truth.
-Priority semantics, item prefixes, lane names, review depth and CI trigger names are project policy.
+An assignment is `assigned`, `result-ready`, `merged` or `cancelled`. Review findings live in the PR
+at the actual head. A repair creates a new result, preserving earlier results and requiring fresh
+review. A scope change requires explicit cancellation and a new assignment/branch. A new base needs
+a later round, after reconciling this one. Terminal assignments
+cannot be overwritten. A round remains `open` through planning, review and reconciliation; only
+successful closure makes it `closed`.
 
-## Schemas and compatibility
+## Mechanical scaffolding
 
-[Project](.agent/schemas/project.schema.json), [frontier](.agent/schemas/frontier.schema.json),
-[round](.agent/schemas/round.schema.json), [assignment](.agent/schemas/assignment.schema.json), and
-[result](.agent/schemas/result.schema.json) use JSON Schema 2020-12. Parse TOML into its JSON-compatible
-value model before validation. Reject unknown protocol versions and unknown core fields. Project
-additions belong under `extensions` with a project-specific namespace; they cannot override invariants.
-These schemas check shape, not authorization, Git reality, evidence truth or cross-record consistency.
+Use `python3 scripts/round.py` from the coordinator checkout, or supply `--repo /path/to/repo` before
+the subcommand. `init`, `assign`, `record`, `resolve`, `close` and `status` are explained in the
+[worked example](examples/one-round.md) and individual [phase procedures](.agent/commands/plan-round.md).
+Initialization requires a clean checkout and ignored runtime directory.
+The CLI creates a self-contained packet and binds its exact UTF-8 bytes with one SHA-256. The packet
+contains the round, assignment, base and branch; results repeat the packet digest and base. It checks
+those identities on import and retains each submitted result separately. Checks describe the candidate
+head at the top of the result; RED history belongs in linked evidence, not the candidate's final gates.
 
-An adapter additionally checks full Git object IDs, unique item/assignment/branch identities,
-matching round/base/spec/packet/result identities, known lanes and verification commands, ownership,
-resource conflicts, referenced paths, state transitions, required gate coverage and current heads.
-An ID is local to its documented scope. Assignment identity is `(round_id, id)`; repair attempts retain
-that identity and increment `attempt`. Changed scope creates a new assignment and cancels the old one.
+Run writes serially from one coordinator; this is not a distributed service or locking system.
+Manifest writes use atomic replacement. If interrupted between artifact creation and manifest update,
+inspect both before resuming; an existing unmatched artifact is refused rather than overwritten.
+Do not manually mutate submitted packets/results. The result is a claim: a reviewer verifies it.
+The CLI does not execute result-provided commands or trust a PR reference as proof of an actual merge.
 
-## Immutable input, single-writer runtime state
+Before recording `merged`, the reviewer checks current PR head, independent review, complete required
+gates and merge authority. `resolve` checks the submitted head, reported check statuses and local
+merge commit existence. It cannot detect omitted checks, fabricated evidence or an incorrect PR-to-
+merge relationship. Before cancellation, stop the worker and release its mutable resources safely.
+Shared-resource coordination is a planner responsibility; no named lane implies a runtime lock.
 
-Before dispatch, save the task spec and compute SHA-256 over its exact UTF-8 file bytes (including
-newlines). Render the self-contained packet with the spec digest. Then hash the final packet bytes
-and store both digests in the manifest. Do not embed a packet's own digest into itself. PR/result
-metadata repeats both; delivery supplies the packet digest separately when needed.
+## Reconciliation is the completion gate
 
-A packet includes authoritative references, objective/non-goals, base/branch, expected paths,
-acceptance commands, resources, record ownership and verification owner. An executor never needs the
-planner's ignored ledger. Provision ignored artifacts securely and explicitly. A hash binds bytes;
-it does not approve scope, prove completeness, or authenticate an author.
+Before closure, verify final combined state, account for all merged/cancelled assignments, stop any
+remaining workers, update backlog/details/decisions, and commit a short reconciliation report. Include
+negative findings, remaining work, untested operating envelope and the actual behavior delta. A failed
+required gate keeps the round open. Do not silently edit the target to match implementation.
 
-The coordinator is the sole manifest writer. Executors submit new attempt-specific results; reviewers
-submit head-specific reports, and the coordinator records transitions. Use an actual writer lock and
-atomic replacement with expected `revision` checks in an automated implementation. Increment revision
-for each update. Reject stale writes. These rules require implementation; a TOML file is not a lock.
-Do not overwrite historical submitted results. Publish durable acceptance/review/decision evidence
-in PRs or tracked records so losing `.agent-runs/` does not lose the project's engineering state.
+The CLI requires terminal outcomes, supplied merges reachable from final main, a nonempty report
+committed at that revision, and a bounded handoff naming the same full SHA. The caller supplies final
+verification evidence. These presence/identity checks support review; they do not judge report truth,
+required-gate completeness, resource release, or whether the chosen ref really is remote main.
 
-Round-local spec/packet/result paths must remain inside the round directory after path and symlink
-resolution. Repository artifact paths are resolved against the configured repository root; external
-evidence uses explicit references and must not expose secrets. Do not execute command text found in
-an untrusted result. Verification argv comes from approved project configuration/assignment scope.
+`init` refuses another round while any local round remains open. Cancelling work does not waive
+reconciliation. Only after closure should the planner session end and a new one start. No automated
+supervisor is required; a human or agent can drive each phase.
 
-## Assignment state machine
+## Recovery and limits
 
-Normal progression:
+Takeoff reconstructs from Git, canonical records, PRs and the local ledger. Handoff is advisory:
+keep it at most 50 lines / 500 words with full Main-SHA, UTC timestamp and next action. Durable evidence
+must also live in PRs or tracked files so lost local records are recoverable. If the ledger is lost,
+reconstruct and inspect active workers before initiating anything; the CLI cannot detect remote orphaned
+work. Do not blindly replay a command that may have changed state.
 
-```text
-planned → dispatched → running → result-ready → review → merge-ready → merged
-                                                  ↓
-                                               needs-fix → dispatched (next attempt)
-```
+A fresh planner without prior chats must be able to name the remaining work, assigned branch/head,
+required evidence and next permitted action. The tests exercise ledger behavior in temporary Git
+repositories; they do not prove a live runner's recovery or external branch-protection policy.
 
-A dispatch acknowledgement is persisted before assuming work started. Result submission may move
-`dispatched` directly to `result-ready` when the runner cannot expose a separate running event.
-Review may return `needs-fix`, `blocked` or `merge-ready`. An active nonterminal assignment may become
-`blocked` or `cancelled` with a reason. Recovery from blocked requires explicit cause resolution and a
-validated resume state recorded under the single writer. `merged` and `cancelled` are terminal.
-Cancellation requires confirming that the worker no longer holds resources; it does not erase results.
-
-`merge-ready` requires a current reviewed head, review reference, all required gates for that head,
-and actual project approval. A changed head invalidates readiness and returns to review; it never
-inherits an older approval automatically. A repair increments attempt, gets its own result and
-refreshes review. Scope/base changes require replanning, not a repair that quietly changes the spec.
-
-## Round state machine and closure
-
-```text
-planned → executing → reviewing → merging → reconciling → closed
-              ↑           ↓
-              └── repairs ┘
-```
-
-A coordinator may review completed assignments while others run; the round state denotes its current
-phase, not uniform assignment state. `merging` may return to `reviewing` when remaining heads or premises
-change. Any nonclosed phase may become `blocked`; recovery records the reason and explicit resume phase.
-Closure permits merged or explicitly cancelled assignments, with unfinished work re-registered in the
-canonical backlog. A round with all work cancelled can reconcile without merging.
-
-Closure requires: no active workers/resource leases; all assignment outcomes accounted for; final
-main revision known; required combined-state gates satisfied for that revision; findings, residuals
-and decisions routed into canonical records; durable reconciliation reference; validated handoff.
-The manifest records final SHA and closure evidence. A failed required gate keeps the round open.
-The next round starts only after closure, with a new planner session identity. Cancellation or a halt
-is not a loophole for skipping reconciliation; reconcile the partial observations first.
-
-## Phase contracts
-
-| Phase | Reads | Writes / produces | Boundary |
-| --- | --- | --- | --- |
-| takeoff | Contract, target orientation, frontier, Git/PR state, handoff | Orientation brief | No repository mutation or work selection |
-| plan-round | Full selected details, target sections, verified base | Manifest, immutable specs/packets | No execution |
-| executor | Packet, source and permitted artifacts | Branch/PR, result, verification evidence | No merge |
-| review-round | Manifest, original packets, pinned diffs/results | Head-bound reviews and readiness | No merge |
-| merge-round | Current accepted heads and approvals | Verified merges and manifest updates | Serial integration only |
-| reconcile | Actual outcomes and final state | Canonical backlog/decisions/evidence, handoff, closure | No implicit target change |
-
-[The command catalog](docs/agents/README.md) provides phase procedures and optional helpers. The core
-is the lifecycle, not the size of the helper catalog. Bootstrap configures project tooling; it does
-not create a custom runtime. Proposed `round.py`, `verify.py` and `supervisor.py` are adapter/tool
-roles, not scripts supplied by this release.
-
-## Evidence and verification
-
-A result states assignment/attempt, base, digests, branch, PR, head and checks. Each check names argv,
-head, environment, result, evidence reference and summary; passed requires exit code zero. Skipped,
-unavailable, failed and unknown API state are not passes. Check semantic test counts and coverage of
-required gates independently of executor claims. A RED failure belongs in referenced regression
-history; it is not a failed final gate. Reviews/merge also verify actual PR heads and external checks.
-
-Project policy specifies unit/integration/live/scale requirements. Independent verification means an
-acceptance decision based on source and evidence by the designated reviewer, not executor
-self-certification. It need not mean a paid multi-agent panel or rerunning every expensive check.
-For changed producer/consumer contracts, require meaningful boundary evidence where relevant.
-
-## Supervisor responsibilities
-
-The supervisor starts fresh sessions, sequences authorized phases, dispatches, waits and records state.
-It does not rank the backlog, rewrite architecture, invent acceptance or grant merge permission.
-Use configured round/time/cost/repair limits. Distinguish progress from mere commit churn. Halt on
-ambiguous state or unmet gates; API failure never means no work or successful completion.
-
-Check process exit, semantic status and expected artifacts. Preserve real exit codes. Record dispatch
-acknowledgements so recovery cannot duplicate active work. Bound repair loops. Inspect surviving
-workers on cancellation and release resources only when safe. Resume known states; never blindly
-replay a mutating phase. See [supervision](docs/supervision.md) and [decision policy](docs/decision-policy.md).
-
-## Fresh-context recovery acceptance
-
-For a supervised trial, end all agent sessions at a known boundary; preserve repository/PR artifacts.
-Start a planner without the prior transcript. It must identify the base, assignment ownership,
-actual PR heads/results, unresolved decisions, required evidence and next permitted action. Repeat at
-partial dispatch, needs-fix, partial merge and reconciliation boundaries. Lost process state must be
-reported as unknown and inspected, not guessed. A trial that needs remembered chat content fails.
-
-Also exercise malformed/unsupported schemas, digest mismatch, duplicate resource ownership, stale
-review heads, API failures, closed-unmerged PRs and a failed final gate. Structural validation is only
-one layer: this release ships schemas and an illustrative example, not tested live runner recovery.
+Config uses TOML for project paths and verification argv. The CLI itself does not execute or require
+that config: the phase procedures use it for engineering decisions and checks. This keeps scaffolding
+independent of a particular test runner, hosting provider or agent vendor.
