@@ -1,0 +1,6 @@
+.agent-runs/
+HANDOFF.md
+.env
+.env.*
+!.env.example
+__pycache__/

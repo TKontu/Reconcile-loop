@@ -1,0 +1,16 @@
+# Copy to .agent/config.toml; preserve your project's actual paths and policies.
+[project]
+architecture = "architecture/target.md"
+backlog = "backlog/frontier.md"
+item_details = "backlog/items"
+decisions = "architecture/decisions"
+default_branch = "main"
+
+[verification]
+# Example only: replace with your actual local gate and safe environment instructions.
+command = ["python3", "-m", "unittest", "discover", "-s", "tests"]
+environment = "offline; no mutable services"
+
+[policy]
+merge_authority = "designated reviewer/operator; executor never self-merges"
+# Point to existing policy/runbooks when this short description is insufficient.
