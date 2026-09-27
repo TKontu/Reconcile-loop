@@ -1,13 +1,14 @@
 # bootstrap
 
-Read project AGENTS.md and `.agent/config.toml`; follow [the protocol](../../SPEC.md).
+Read the project’s existing AGENTS.md and `.agent/config.toml` if present; follow [the protocol](../../SPEC.md).
 
 Input: project repository and its architecture, README and backlog.
 
 1. Inspect existing instructions, files, Git status and verification tools. Preserve user changes.
 2. Copy or merge `.agent/commands/`, `.agent/config.example.toml`, `scripts/round.py`, `templates/`
    and `SPEC.md`, plus `examples/one-round.md` for its linked walkthrough. Optionally install `.agents/skills/reconcile-loop/` and the `.claude/commands/`
-   wrappers. They reference the same procedures. Preserve these relative paths.
+   wrappers. They reference the same procedures. Preserve these relative paths and retain the
+   pack’s MIT notice with copied materials; do not replace an existing project’s license.
 3. Merge [the project contract](../../templates/AGENTS.md) into the target AGENTS.md; do not copy
    the pattern library's contributor contract. Adapt `.agent/config.example.toml` into
    `.agent/config.toml` with actual architecture/backlog paths, verification argv and merge authority.

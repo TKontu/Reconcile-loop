@@ -68,6 +68,11 @@ def validate_result(data, manifest, assignment):
     require(
         data["packet_sha256"] == assignment["packet_sha256"], "Result packet mismatch"
     )
+    status = data.get("status", "result-ready")
+    require(status in {"result-ready", "blocked"}, "Unknown result status")
+    if status == "blocked":
+        require(text(data.get("reason")), "Blocked result needs a reason")
+        return status
     require(
         isinstance(data["head_sha"], str) and FULL_SHA.fullmatch(data["head_sha"]),
         "Result needs a full head SHA",
@@ -89,6 +94,7 @@ def validate_result(data, manifest, assignment):
             "Unknown check status",
         )
         require(text(check["evidence"]), "Check needs an evidence reference or summary")
+    return status
 
 
 def initialize(repo, root, args):
@@ -159,7 +165,7 @@ def record(root, manifest, args):
         assignment["state"] not in {"merged", "cancelled"}, "Assignment is terminal"
     )
     bound_packet(root, assignment)
-    validate_result(data, manifest, assignment)
+    status = validate_result(data, manifest, assignment)
     path = f"results/{data['assignment']}-{len(assignment['results']) + 1}.json"
     target = inside(root, path)
     require(
@@ -167,7 +173,7 @@ def record(root, manifest, args):
     )
     save(target, data)
     assignment["results"].append(path)
-    assignment["state"] = "result-ready"
+    assignment["state"] = status
 
 
 def resolve(repo, root, manifest, args):

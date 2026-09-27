@@ -17,7 +17,7 @@ target changes and reserved actions follow project policy.
 | --- | --- | --- |
 | `.agent-runs/ROUND/round.json` | Version, ID, pinned base, open/closed, assignments and outcomes | Coordinator |
 | `prompts/A1.md` | Complete assignment with identity, scope, resources and acceptance | Planner, immutable after delivery |
-| `results/A1-1.json` | Assignment/base/packet identity, candidate head, PR and check evidence | Executor submits; coordinator imports |
+| `results/A1-1.json` | Assignment/base/packet identity and candidate evidence or blocker reason | Executor submits; coordinator imports |
 
 The round manifest is the only runtime status record. Markdown carries scope and reasoning. No
 supervisor must interpret prose to guess completion. The CLI records JSON with version 1; unknown
@@ -25,12 +25,19 @@ manifest versions fail. Project semantics such as priority labels and lane names
 prose/config rather than a mandatory taxonomy. Paths remain configurable for authoritative documents;
 local round artifacts use the fixed `.agent-runs/` convention.
 
-An assignment is `assigned`, `result-ready`, `merged` or `cancelled`. Review findings live in the PR
-at the actual head. A repair creates a new result, preserving earlier results and requiring fresh
+An assignment is `assigned`, `blocked`, `result-ready`, `merged` or `cancelled`. Review findings live
+in the PR at the actual head. A repair creates a new result, preserving earlier results and requiring fresh
 review. A scope change requires explicit cancellation and a new assignment/branch. A new base needs
 a later round, after reconciling this one. Terminal assignments
 cannot be overwritten. A round remains `open` through planning, review and reconciliation; only
 successful closure makes it `closed`.
+
+A result may report `status: "blocked"` with a nonempty `reason`, assignment ID, base SHA and packet
+digest. No candidate head, PR or check list is required for a blocker. The reason stays in the saved
+result; the manifest exposes `blocked` and its result path. Blocking supersedes an older candidate
+and prevents merge resolution/round closure. A later valid `result-ready` submission resumes review;
+explicit cancellation remains available. Prior results are retained. Omitted result status defaults
+to `result-ready` for compatibility; other status values are rejected.
 
 ## Mechanical scaffolding
 

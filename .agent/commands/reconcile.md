@@ -17,10 +17,11 @@ After the final default-branch revision is known, run the owed final gate and wr
 [the handoff](handoff.md). Close locally:
 
 ```sh
-python3 scripts/round.py close ROUND --main main --reconciliation docs/rounds/ROUND.md --handoff HANDOFF.md --evidence "Final revision check evidence; workers stopped"
+python3 scripts/round.py close ROUND --main main --reconciliation "<tracked-reconciliation-path>" --handoff HANDOFF.md --evidence "Final revision check evidence; workers stopped"
 ```
 
-Use actual configured paths and branch. The CLI requires terminal assignments, merge ancestry,
-committed reconciliation and a handoff naming final main. It cannot judge the truth of the report or
+Replace the reconciliation placeholder with the project’s chosen tracked report path; use the actual
+default branch and handoff path. No reconciliation-path configuration is required. The CLI requires
+terminal assignments, merge ancestry, committed reconciliation and a handoff naming final main. It cannot judge the truth of the report or
 whether you omitted a required gate. Review those before closing. Only then end the planner session
 and begin the next round with fresh context. A cancelled round also reconciles its partial findings.

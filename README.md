@@ -64,3 +64,5 @@ repositories; no service, network, third-party Python dependency or agent runtim
 
 Only `main` is maintained. The [expanded experimental snapshot](https://github.com/TKontu/Reconcile-loop/tree/docs/standalone-patterns)
 is retained for reference and receives no parallel feature development.
+
+Licensed under the [MIT License](LICENSE). Retain its notice when copying the scaffolding.
