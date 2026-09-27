@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 FULL_SHA = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 
@@ -217,9 +218,20 @@ def close(repo, root, manifest, args):
     for assignment in manifest["assignments"].values():
         if assignment["state"] == "merged":
             git(repo, "merge-base", "--is-ancestor", assignment["merge_sha"], final)
-    relative = inside(repo, args.reconciliation).relative_to(repo).as_posix()
-    evidence = git(repo, "show", f"{final}:{relative}")
-    require(evidence.strip(), "Reconciliation must be committed at final main")
+    reference = args.reconciliation
+    url = urlsplit(reference)
+    if url.scheme:
+        require(
+            url.scheme in {"https", "http"} and url.hostname,
+            "Reconciliation URL needs HTTP(S) and a host",
+        )
+    else:
+        reference = inside(repo, reference).relative_to(repo).as_posix()
+        evidence = git(repo, "show", f"{final}:{reference}")
+        require(
+            evidence.strip(),
+            "Local reconciliation evidence must be committed at final main",
+        )
     handoff = inside(repo, args.handoff).read_text()
     require(
         f"Main-SHA: {final}" in handoff.splitlines(),
@@ -233,7 +245,7 @@ def close(repo, root, manifest, args):
     manifest.update(
         state="closed",
         final_main_sha=final,
-        reconciliation=relative,
+        reconciliation=reference,
         handoff=args.handoff,
         closure_evidence=args.evidence,
     )
@@ -263,7 +275,12 @@ def parser():
             sub.add_argument("--merge")
             sub.add_argument("--evidence", required=True)
         elif name == "close":
-            for field in ("main", "reconciliation", "handoff", "evidence"):
+            sub.add_argument(
+                "--reconciliation",
+                required=True,
+                help="Tracked file path or HTTP(S) reconciliation evidence URL",
+            )
+            for field in ("main", "handoff", "evidence"):
                 sub.add_argument(f"--{field}", required=True)
     return command
 

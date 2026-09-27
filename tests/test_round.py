@@ -375,7 +375,69 @@ class RoundTests(unittest.TestCase):
         self.assertEqual(self.manifest()["state"], "closed")
         self.cli("init", "R2", "--base", "main")
 
-    def test_close_requires_committed_reconciliation_and_current_handoff(self):
+    def test_close_accepts_reconciliation_pr_without_separate_report(self):
+        self.start()
+        self.cli(
+            "resolve",
+            "R1",
+            "A1",
+            "--outcome",
+            "cancelled",
+            "--evidence",
+            "Worker stopped; remaining work tracked in backlog",
+        )
+        (self.repo / "backlog.md").write_text(
+            "TASK-1 ready; missing fixture recorded.\n"
+        )
+        self.git("add", "backlog.md")
+        self.git("commit", "-qm", "reconcile task status in existing project state")
+        final_sha = self.git("rev-parse", "HEAD")
+        (self.repo / "HANDOFF.md").write_text(f"Main-SHA: {final_sha}\n")
+        reference = "https://example.invalid/project/pull/2"
+        self.cli(
+            "close",
+            "R1",
+            "--main",
+            "main",
+            "--reconciliation",
+            reference,
+            "--handoff",
+            "HANDOFF.md",
+            "--evidence",
+            "Final checks passed",
+        )
+        self.assertEqual(self.manifest()["state"], "closed")
+        self.assertEqual(self.manifest()["reconciliation"], reference)
+        self.assertFalse((self.repo / "reconcile.md").exists())
+        self.cli("init", "R2", "--base", "main")
+
+    def test_close_rejects_malformed_reconciliation_url(self):
+        self.start()
+        self.cli(
+            "resolve", "R1", "A1", "--outcome", "cancelled", "--evidence", "Stopped"
+        )
+        (self.repo / "HANDOFF.md").write_text(f"Main-SHA: {self.base}\n")
+        for reference in (
+            "https:///missing-host",
+            "https://",
+            "ftp://example.invalid/evidence",
+        ):
+            self.cli(
+                "close",
+                "R1",
+                "--main",
+                "main",
+                "--reconciliation",
+                reference,
+                "--handoff",
+                "HANDOFF.md",
+                "--evidence",
+                "checks",
+                ok=False,
+            )
+        self.assertEqual(self.manifest()["state"], "open")
+
+    def test_local_evidence_requires_committed_file_and_current_handoff(self):
         self.start()
         self.cli(
             "resolve", "R1", "A1", "--outcome", "cancelled", "--evidence", "Stopped"

@@ -45,13 +45,17 @@ external action—it does not merge or authorize it. If the worker stops without
 ## Reconcile and restart
 
 Mark TASK-1 complete only after its actual acceptance passes. State that runtime expiry remains
-unimplemented. Commit a short `docs/rounds/R1.md` with the outcome, evidence, residual and next item;
-get required review/merge for that record update. Run the final main gate, write a handoff naming
-that full SHA, and confirm no worker holds resources. Then:
+unimplemented. Update the existing backlog/details with the outcome, evidence, residual and next item;
+get required review/merge for those updates. That reconciliation PR provides durable evidence, so no
+separate report is needed. Run the final main gate, write a handoff naming that full SHA, and confirm
+no worker holds resources. Then:
 
 ```sh
-python3 scripts/round.py close R1 --main main --reconciliation docs/rounds/R1.md --handoff HANDOFF.md --evidence "Actual final revision check reference"
+python3 scripts/round.py close R1 --main main --reconciliation "https://example.invalid/project/pull/RECONCILIATION_PR" --handoff HANDOFF.md --evidence "Actual final revision check reference"
 ```
+
+Replace the illustrative URL with the actual reconciliation PR, or name an existing tracked file
+containing the evidence. The CLI does not fetch the URL; the reviewer verifies it.
 
 A new round is refused until this succeeds. Stop the planner session. A fresh planner must recover
 the outcome, remaining runtime work and next permitted action from the repository/PRs alone.
