@@ -65,14 +65,19 @@ Shared-resource coordination is a planner responsibility; no named lane implies 
 ## Reconciliation is the completion gate
 
 Before closure, verify final combined state, account for all merged/cancelled assignments, stop any
-remaining workers, update backlog/details/decisions, and commit a short reconciliation report. Include
-negative findings, remaining work, untested operating envelope and the actual behavior delta. A failed
-required gate keeps the round open. Do not silently edit the target to match implementation.
+remaining workers, and update backlog/details/decisions. Every round must leave durable reconciliation
+evidence in tracked project state. Existing record updates and their reconciliation PR can provide
+that evidence; a separate report is not required. Include negative findings, remaining work, untested
+operating envelope and the actual behavior delta. A failed required gate keeps the round open.
+Do not silently edit the target to match implementation.
 
-The CLI requires terminal outcomes, supplied merges reachable from final main, a nonempty report
-committed at that revision, and a bounded handoff naming the same full SHA. The caller supplies final
-verification evidence. These presence/identity checks support review; they do not judge report truth,
-required-gate completeness, resource release, or whether the chosen ref really is remote main.
+The CLI requires terminal outcomes, supplied merges reachable from final main, a reconciliation
+evidence reference, and a bounded handoff naming the same full SHA. `--reconciliation` accepts an
+existing tracked file path or an HTTP(S) evidence URL, such as the reconciliation PR. Local files
+must be nonempty and committed at final main. URLs are recorded without network access; the reviewer
+verifies that the reference is durable, accessible, and records the round's actual reconciliation
+into tracked state. The caller also supplies final verification evidence. These checks do not judge
+evidence truth, required-gate completeness, resource release, or whether the ref really is remote main.
 
 `init` refuses another round while any local round remains open. Cancelling work does not waive
 reconciliation. Only after closure should the planner session end and a new one start. No automated
