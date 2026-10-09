@@ -10,5 +10,7 @@ Keep it at most 50 lines / 500 words. Validate SHA and links. Do not copy archit
 full logs, secrets or the conversation transcript. Durable decisions/evidence belong in tracked files
 or PRs. The local ignored handoff is advisory and may be reconstructed if lost.
 
-Report its location and remaining gates. End the planner session after reconciliation; do not claim
-to clear your own conversation. A fresh planner should recover using only repository/PR records.
+Report its location and remaining gates. An interrupted session may hand off an open round; its
+successor must recover that round before starting another. Only reconciliation closes the round.
+Do not claim to clear your own conversation. A fresh planner should recover using only
+repository/PR records.

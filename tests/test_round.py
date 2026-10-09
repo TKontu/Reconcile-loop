@@ -92,6 +92,65 @@ class RoundTests(unittest.TestCase):
         path.write_text(json.dumps(data))
         return path
 
+    def handoff(self, sha=None):
+        return (
+            "# Handoff\nGenerated-UTC: 2026-10-09T10:00:00Z\n"
+            f"Main-SHA: {sha or self.base}\n\n"
+            "## Round delta\nTASK-1 reconciled in the backlog.\n\n"
+            "## Open work\nNone.\n\n"
+            "## Next action\nRead the backlog and select executable work.\n"
+        )
+
+    def test_close_rejects_incomplete_handoff_without_closing_round(self):
+        self.start()
+        self.cli(
+            "resolve", "R1", "A1", "--outcome", "cancelled", "--evidence", "Stopped"
+        )
+        valid = self.handoff()
+        invalid = [
+            (f"Main-SHA: {self.base}\n", "Generated-UTC"),
+            (valid.replace("Generated-UTC: 2026-10-09T10:00:00Z\n", ""), "Generated-UTC"),
+            (valid.replace("2026-10-09", "2026-02-30"), "Generated-UTC"),
+            (valid.replace("10:00:00Z", "10:00:00+00:00"), "Generated-UTC"),
+        ]
+        for heading, body in (
+            ("Round delta", "TASK-1 reconciled in the backlog."),
+            ("Open work", "None."),
+            ("Next action", "Read the backlog and select executable work."),
+        ):
+            invalid.extend([
+                (valid.replace(f"## {heading}", f"## Other {heading}"), heading),
+                (valid.replace(body, ""), heading),
+                (valid.replace(body, "<!-- Fill this in -->"), heading),
+            ])
+        ledger = self.repo / ".agent-runs/R1/round.json"
+        original = ledger.read_text()
+        for handoff, diagnostic in invalid:
+            ledger.write_text(original)
+            with self.subTest(handoff=handoff):
+                (self.repo / "HANDOFF.md").write_text(handoff)
+                rejected = self.cli(
+                    "close", "R1", "--main", "main", "--reconciliation", "README.md",
+                    "--handoff", "HANDOFF.md", "--evidence", "Final checks passed", ok=False,
+                )
+                self.assertIn(diagnostic, rejected.stderr)
+                self.assertEqual(self.manifest()["state"], "open")
+
+    def test_close_preserves_handoff_size_limits(self):
+        self.start()
+        self.cli(
+            "resolve", "R1", "A1", "--outcome", "cancelled", "--evidence", "Stopped"
+        )
+        for extra in ("\n" * 51, "word " * 501):
+            with self.subTest(extra=extra):
+                (self.repo / "HANDOFF.md").write_text(self.handoff() + extra)
+                rejected = self.cli(
+                    "close", "R1", "--main", "main", "--reconciliation", "README.md",
+                    "--handoff", "HANDOFF.md", "--evidence", "Final checks passed", ok=False,
+                )
+                self.assertIn("too long", rejected.stderr)
+                self.assertEqual(self.manifest()["state"], "open")
+
     def test_blocked_result_needs_no_pr_and_keeps_round_open(self):
         self.start()
         self.cli("record", "R1", "--result", str(self.blocked_result()))
@@ -358,7 +417,7 @@ class RoundTests(unittest.TestCase):
         self.git("commit", "-qm", "reconcile cancelled assignment")
         final_sha = self.git("rev-parse", "HEAD")
         (self.repo / "HANDOFF.md").write_text(
-            f"# Handoff\nMain-SHA: {final_sha}\nNext: plan TASK-1.\n"
+            self.handoff(final_sha)
         )
         self.cli(
             "close",
@@ -392,7 +451,7 @@ class RoundTests(unittest.TestCase):
         self.git("add", "backlog.md")
         self.git("commit", "-qm", "reconcile task status in existing project state")
         final_sha = self.git("rev-parse", "HEAD")
-        (self.repo / "HANDOFF.md").write_text(f"Main-SHA: {final_sha}\n")
+        (self.repo / "HANDOFF.md").write_text(self.handoff(final_sha))
         reference = "https://example.invalid/project/pull/2"
         self.cli(
             "close",
@@ -416,7 +475,7 @@ class RoundTests(unittest.TestCase):
         self.cli(
             "resolve", "R1", "A1", "--outcome", "cancelled", "--evidence", "Stopped"
         )
-        (self.repo / "HANDOFF.md").write_text(f"Main-SHA: {self.base}\n")
+        (self.repo / "HANDOFF.md").write_text(self.handoff())
         for reference in (
             "https:///missing-host",
             "https://",
@@ -443,7 +502,7 @@ class RoundTests(unittest.TestCase):
             "resolve", "R1", "A1", "--outcome", "cancelled", "--evidence", "Stopped"
         )
         (self.repo / "reconcile.md").write_text("Uncommitted evidence\n")
-        (self.repo / "HANDOFF.md").write_text(f"Main-SHA: {self.base}\n")
+        (self.repo / "HANDOFF.md").write_text(self.handoff())
         args = (
             "close",
             "R1",
@@ -479,7 +538,7 @@ class RoundTests(unittest.TestCase):
             "Independent review and actual merge verified",
         )
         self.cli("record", "R1", "--result", str(result), ok=False)
-        (self.repo / "HANDOFF.md").write_text(f"Main-SHA: {self.base}\n")
+        (self.repo / "HANDOFF.md").write_text(self.handoff())
         self.cli(
             "close",
             "R1",
