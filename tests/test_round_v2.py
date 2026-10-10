@@ -196,6 +196,15 @@ class SupervisedRoundTests(Helpers):
         self.cli("resolve", "R1", "A1", "--outcome", "cancelled", "--evidence", "Stopped")
         self.assign("A3", "--owns", "src/x/**", "--resource", "db")
 
+    def test_owned_paths_must_be_normalized_relative_paths(self):
+        self.cli("init", "R1", "--base", "main", "--supervised")
+        self.assign("A1", "--owns", "src/a")
+        for pattern in ("./src/a", "src//a", "src/x/../a", "src/a/", "../outside", "src/./a", ""):
+            with self.subTest(pattern=pattern):
+                rejected = self.assign("A2", "--owns", pattern, ok=False)
+                self.assertIn("--owns", rejected.stderr)
+        self.assertEqual(list(self.manifest()["assignments"]), ["A1"])
+
     def test_reconcile_assignment_follows_terminal_work(self):
         self.start()
         self.assign("R", "--kind", "reconcile", "--owns", "backlog/**",

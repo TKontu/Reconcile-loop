@@ -3,7 +3,8 @@
 This branch, `autonomous-reconcile-loop`, extends [the protocol](SPEC.md) so a deterministic
 supervisor can drive rounds unattended. Main remains the lean manual workflow; this branch is a
 superset of it and receives main by merge. Everything here is additive: a round created without
-`--supervised` is a version 1 round and behaves exactly as on main.
+`--supervised` is a version 1 round with the same records and rules as on main; it also takes the
+round lock described under Concurrency.
 
 > Status: draft. The ledger records below exist; the supervisor that uses them is not built yet.
 
@@ -26,9 +27,10 @@ Version 2 rounds keep the five assignment states; the additions are fields and a
 
 `assign` on a supervised round requires one or more `--owns GLOB` relative path patterns and accepts
 `--resource NAME` (repeatable) and `--kind work|reconcile`. Owned paths, resources and kind are written
-into the packet, so the packet digest binds them. Two live work assignments may not share a resource
-or have owned patterns whose literal prefixes (text before the first `*`, `?` or `[`) overlap; the
-check is deliberately conservative.
+into the packet, so the packet digest binds them. Patterns must be normalized, with no leading or
+trailing `/` and no empty, `.` or `..` segments, so one path has one spelling. Two live work
+assignments may not share a resource or have owned patterns whose literal prefixes (text before the
+first `*`, `?` or `[`) overlap; the check is deliberately conservative.
 
 A `reconcile` assignment needs `--start REF` (recorded as `Start-SHA`), may be created only after every
 work assignment is merged or cancelled, and ends the round's work: no further assignments are accepted
@@ -52,9 +54,10 @@ Supervised `close` requires `--delta changed|none`, the round's actual behavior 
 
 ### Concurrency
 
-Ledger writers take an exclusive lock on `.agent-runs/ROUND/round.lock` for the duration of the
-command, so an operator's command and the supervisor cannot lose each other's updates. This is a
-single-host lock, not distributed coordination.
+Every command except `init`, including `status`, takes an exclusive lock on
+`.agent-runs/ROUND/round.lock` for its duration, in version 1 and 2 rounds alike, so an operator's
+command and the supervisor cannot lose each other's updates. This is a single-host lock, not
+distributed coordination.
 
 ### Sessions
 
