@@ -6,8 +6,8 @@ Input: project repository and its architecture, README and backlog.
 
 1. Inspect existing instructions, files, Git status and verification tools. Preserve user changes.
 2. Copy or merge `.agent/commands/`, `.agent/config.example.toml`, `scripts/round.py`, `templates/`
-   and `SPEC.md`, plus `examples/one-round.md` for its linked walkthrough. Optionally install `.agents/skills/reconcile-loop/` and the `.claude/commands/`
-   wrappers. They reference the same procedures. Preserve these relative paths and retain the
+   and `SPEC.md`, plus `examples/one-round.md` for its linked walkthrough. Optionally install `.agents/skills/reconcile-loop/`, the `.claude/commands/`
+   wrappers and `.claude/agents/` subagents. They reference the same procedures. Preserve these relative paths and retain the
    pack’s MIT notice with copied materials; do not replace an existing project’s license.
 3. Merge [the project contract](../../templates/AGENTS.md) into the target AGENTS.md; do not copy
    the pattern library's contributor contract. Adapt `.agent/config.example.toml` into

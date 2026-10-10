@@ -19,6 +19,11 @@ external actions; this skill does not independently grant publication or merge p
 - [Reconcile](../../../.agent/commands/reconcile.md): record observations and close the round.
 - [Handoff](../../../.agent/commands/handoff.md): prepare a bounded delta for the next fresh session.
 
+Optional helpers, outside the phase sequence:
+
+- [Status](../../../.agent/commands/status.md): report backlog status and feasibility read-only.
+- [PR verdict](../../../.agent/commands/pr-verdict.md): run an advisory, head-bound review panel.
+
 For an end-to-end request, follow these phases in order within the granted scope. Stop at unresolved
 approval or acceptance gates; continue independent authorized work when possible. This pack supplies
 local scaffolding, not an unattended agent launcher. Do not substitute its contributor contract for
