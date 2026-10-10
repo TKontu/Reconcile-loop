@@ -56,8 +56,44 @@ Ledger writers take an exclusive lock on `.agent-runs/ROUND/round.lock` for the 
 command, so an operator's command and the supervisor cannot lose each other's updates. This is a
 single-host lock, not distributed coordination.
 
+### Sessions
+
+Every launched agent process is recorded before launch (write-ahead), so a restarted supervisor can
+find it again instead of dispatching twice:
+
+```sh
+python3 scripts/round.py session start ROUND --role planner|executor|reviewer|merger \
+  [--assignment A1] [--head FULL_HEAD] --runner NAME --session-uuid UUID --cwd PATH \
+  --deadline YYYY-MM-DDTHH:MM:SSZ [--procedure NAME]     # prints {"session": "S1"}
+python3 scripts/round.py session ack ROUND S1 --pid PID
+python3 scripts/round.py session end ROUND S1 --state exited|timed-out|killed|lost \
+  [--exit-code N] [--cost-usd X] [--imported results/A1-1.json]
+```
+
+A session is `launching`, then `running`, then ended. At most one live session exists per assignment
+and one live planner per round. Role rules: an executor needs an `assigned` assignment or a
+`needs-fix` review of the latest result (a repair); a reviewer needs the latest result's head and no
+review of it yet; a merger needs a `ready` review of that head. `review --session S` accepts only a
+finished reviewer session for the same assignment and head. Cancellation refuses while the
+assignment has a live session; a merged resolution tolerates only its live merger session. Closure
+refuses any live session. A merger session has no process: it is the write-ahead record of a merge
+attempt, which the supervisor verifies by observation before resolving.
+
+### Halts
+
+```sh
+python3 scripts/round.py halt ROUND --code CODE --detail TEXT --action TEXT \
+  [--assignment A1] [--session S1] [--inventory inventory.json]
+python3 scripts/round.py clear-halt ROUND H1 --evidence TEXT
+```
+
+A halt records a condition that cannot be recomputed from the ledger and observations: a lost or
+timed-out session, invalid agent output, a failed push, publish or merge, a red final gate, or a
+planner reporting no executable work or an owed decision. The inventory lists live sessions,
+worktrees and resources at that moment. While any halt is uncleared, no session may start and the
+round cannot close. Only an operator clears a halt, with evidence of what was inspected or resolved.
+
 ## Planned
 
-Sessions and halts (`session start|ack|end`, `halt`, `clear-halt`), the supervisor
-(`scripts/supervise.py`), role contracts, merge policy and reconciliation automation follow in later
-changes on this branch.
+The supervisor (`scripts/supervise.py`), role contracts, merge policy and reconciliation automation
+follow in later changes on this branch.
