@@ -11,7 +11,7 @@ reason and resolve the blocker or explicitly cancel the assignment.
 
 Compare behavior with the target and acceptance. Check concrete failure cases, scope, default changes,
 production connections, and resource/scale limits when relevant. Keep review proportional to risk;
-multiple agent panels are optional. Record findings with locations and evidence.
+multiple agent panels are optional ([pr-verdict](pr-verdict.md) describes one). Record findings with locations and evidence.
 
 Return ready, needs-fix or blocked, with a head-bound review reference. For repairs, send a bounded
 request without silently changing the assignment. A new result invalidates the old review. Skipped
