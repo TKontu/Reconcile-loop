@@ -260,6 +260,10 @@ def close(repo, root, manifest, args):
             re.MULTILINE | re.DOTALL,
         )
         body = re.sub(r"<!--.*?-->", "", section[1], flags=re.DOTALL) if section else ""
+        # Template placeholders such as <One exact action> are not content; autolinks are.
+        body = re.sub(
+            r"^[ \t]*<(?![^>\n]*://)[^<>\n]*>[ \t]*$", "", body, flags=re.MULTILINE
+        )
         require(re.search(r"\w", body), f"Handoff needs a nonempty '{heading}' section")
     manifest.update(
         state="closed",

@@ -122,6 +122,7 @@ class RoundTests(unittest.TestCase):
                 (valid.replace(f"## {heading}", f"## Other {heading}"), heading),
                 (valid.replace(body, ""), heading),
                 (valid.replace(body, "<!-- Fill this in -->"), heading),
+                (valid.replace(body, "<Fill this in>"), heading),
             ])
         ledger = self.repo / ".agent-runs/R1/round.json"
         original = ledger.read_text()
@@ -135,6 +136,41 @@ class RoundTests(unittest.TestCase):
                 )
                 self.assertIn(diagnostic, rejected.stderr)
                 self.assertEqual(self.manifest()["state"], "open")
+
+    def test_close_rejects_unfilled_handoff_template_sections(self):
+        self.start()
+        self.cli(
+            "resolve", "R1", "A1", "--outcome", "cancelled", "--evidence", "Stopped"
+        )
+        template = (Path(__file__).resolve().parents[1] / "templates/handoff.md").read_text()
+        (self.repo / "HANDOFF.md").write_text(
+            template.replace("<timestamp>", "2026-10-09T10:00:00Z").replace(
+                "<full final main SHA>", self.base
+            )
+        )
+        rejected = self.cli(
+            "close", "R1", "--main", "main", "--reconciliation", "README.md",
+            "--handoff", "HANDOFF.md", "--evidence", "Final checks passed", ok=False,
+        )
+        self.assertIn("Round delta", rejected.stderr)
+        self.assertEqual(self.manifest()["state"], "open")
+
+    def test_close_accepts_autolink_as_section_content(self):
+        self.start()
+        self.cli(
+            "resolve", "R1", "A1", "--outcome", "cancelled", "--evidence", "Stopped"
+        )
+        (self.repo / "HANDOFF.md").write_text(
+            self.handoff().replace(
+                "Read the backlog and select executable work.",
+                "<https://example.invalid/project/issues/2>",
+            )
+        )
+        self.cli(
+            "close", "R1", "--main", "main", "--reconciliation", "README.md",
+            "--handoff", "HANDOFF.md", "--evidence", "Final checks passed",
+        )
+        self.assertEqual(self.manifest()["state"], "closed")
 
     def test_close_preserves_handoff_size_limits(self):
         self.start()

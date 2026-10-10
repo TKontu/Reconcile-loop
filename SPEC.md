@@ -73,8 +73,9 @@ Do not silently edit the target to match implementation.
 
 The CLI requires terminal outcomes, supplied merges reachable from final main, a reconciliation
 evidence reference, and a bounded handoff naming the same full SHA, a valid
-`Generated-UTC: YYYY-MM-DDTHH:MM:SSZ` timestamp, and nonempty `Round delta`, `Open work` and `Next action` sections (`None` is valid for
-open work). These are structural checks, not a judgment of the prose. `--reconciliation` accepts an
+`Generated-UTC: YYYY-MM-DDTHH:MM:SSZ` timestamp, and nonempty `Round delta`, `Open work` and
+`Next action` sections (`None` is valid for open work; template placeholders are not content).
+These are structural checks, not a judgment of the prose. `--reconciliation` accepts an
 existing tracked file path or an HTTP(S) evidence URL, such as the reconciliation PR. Local files
 must be nonempty and committed at final main. URLs are recorded without network access; the reviewer
 verifies that the reference is durable, accessible, and records the round's actual reconciliation

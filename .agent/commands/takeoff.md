@@ -9,10 +9,10 @@ remote knowledge or unavailable PR access. Do not mutate a dirty checkout during
 Read the optional handoff. Compare its Main-SHA with known main: equal=current, ancestor=stale,
 otherwise invalid. Reconstruct missing/stale information from Git, backlog and PR evidence. Inspect
 any open round with `python3 scripts/round.py status ROUND`; recover it before planning another.
-For an interrupted round, compare saved results with actual PR heads and merges, inspect surviving
-workers and resource ownership, and resume only outstanding work. Do not duplicate a worker or
-replay a merge because local state is stale. Record unavailable gates with the affected head,
-recovery owner and next action in existing result/PR evidence.
+For an interrupted round, compare saved results with actual PR heads and merges and inspect
+surviving workers and resource ownership. Report the outstanding work, unavailable gates with their
+affected head, and the recovery owner and next action; recovery itself follows the protocol after
+takeoff. Do not duplicate a worker or replay a merge because local state is stale.
 
 Output purpose, accepted outcomes, active work/conflicts, decisions owed, next authoritative reads
 and handoff freshness. Stop before selecting work. Conversation history is not required input.
