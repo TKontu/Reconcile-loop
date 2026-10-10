@@ -5,9 +5,9 @@ Read the project’s existing AGENTS.md and `.agent/config.toml` if present; fol
 Input: project repository and its architecture, README and backlog.
 
 1. Inspect existing instructions, files, Git status and verification tools. Preserve user changes.
-2. Copy or merge `.agent/commands/`, `.agent/config.example.toml`, `scripts/round.py`, `templates/`
-   and `SPEC.md`, plus `examples/one-round.md` for its linked walkthrough. Optionally install `.agents/skills/reconcile-loop/`, the `.claude/commands/`
-   wrappers and `.claude/agents/` subagents. They reference the same procedures. Preserve these relative paths and retain the
+2. Run the pack's `scripts/install.py` against the project root, adding `--claude`/`--codex` for
+   the runner entry points, or copy the same paths manually. Merge every `*.pack-new` file it
+   reports into the project's version, then delete it. Preserve relative paths and retain the
    pack’s MIT notice with copied materials; do not replace an existing project’s license.
 3. Merge [the project contract](../../templates/AGENTS.md) into the target AGENTS.md; do not copy
    the pattern library's contributor contract. Adapt `.agent/config.example.toml` into
