@@ -1,0 +1,85 @@
+# Copy to .agent/supervisor.toml and commit it. The supervisor reads this file from the remote
+# default branch, never from the working tree; see SUPERVISION.md. An ignored
+# .agent/supervisor.local.toml may override [runner] and [budgets] keys only.
+
+[supervisor]
+# 1: plan, execute and review automatically; a person merges and reconciles.
+# 2: also merge when [policy.merge] grants it. 3: also reconcile and start the next round.
+autonomy = 1
+remote = "origin"
+# Agent worktrees live outside the repository. Empty means ../<repository>-worktrees.
+worktree_root = ""
+max_parallel = 1
+max_assignments = 1
+poll_seconds = 60
+launch_grace_seconds = 120
+
+[budgets]
+round_usd = 10.0
+sessions_per_round = 8
+max_rounds_per_run = 1
+ci_timeout_minutes = 60
+
+[stop]
+# Park after this many consecutive closed rounds with no behavior change.
+stall_rounds = 2
+max_repairs = 2
+
+[notify]
+# argv run when the supervisor's outcome changes; empty disables notification.
+command = []
+
+[policy.merge]
+auto_merge = false
+method = "squash"
+# Check names that must succeed on the exact reviewed head before an automatic merge.
+required_checks = []
+protected_paths = [".github/**", ".agent/**", "AGENTS.md", "SPEC.md", "SUPERVISION.md"]
+max_changed_lines = 400
+publish_reviews = true
+
+[policy.reconcile]
+auto_reconcile = false
+allow_reconcile_merge = false
+# Tracked project records a reconcile assignment may change.
+record_paths = []
+
+[runner]
+default = "claude"
+# Credentials removed from every agent environment; the supervisor publishes, agents do not.
+env_drop = ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "SSH_AUTH_SOCK"]
+
+[runner.commands.claude]
+# Placeholders are substituted per argv element; no shell is involved.
+argv = [
+  "claude", "-p", "--output-format", "json", "--no-session-persistence",
+  "--session-id", "{session_uuid}", "--model", "{model}",
+  "--permission-mode", "{permission_mode}", "{prompt}",
+]
+# Envelope field names are confirmed against a recorded run before the runner is enabled.
+output = { result = "result", is_error = "is_error", cost_usd = "total_cost_usd", session_id = "session_id" }
+
+[runner.roles.planner]
+model = "opus"
+budget_usd = 3.0
+timeout_minutes = 30
+permission_mode = "default"
+
+[runner.roles.executor]
+model = "opus"
+budget_usd = 5.0
+timeout_minutes = 60
+permission_mode = "acceptEdits"
+
+[runner.roles.reviewer]
+# Prefer a different model from the executor to reduce correlated review.
+model = "sonnet"
+budget_usd = 2.0
+timeout_minutes = 30
+permission_mode = "default"
+
+[runner.roles.reconciler]
+model = "opus"
+budget_usd = 3.0
+timeout_minutes = 30
+permission_mode = "acceptEdits"

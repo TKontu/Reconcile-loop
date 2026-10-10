@@ -6,7 +6,8 @@ superset of it and receives main by merge. Everything here is additive: a round 
 `--supervised` is a version 1 round with the same records and rules as on main; it also takes the
 round lock described under Concurrency.
 
-> Status: draft. The ledger records below exist; the supervisor that uses them is not built yet.
+> Status: draft. The ledger records below exist. The supervisor observes and decides but performs
+> no effects yet: it cannot launch agents, push, publish or merge.
 
 ## Authority
 
@@ -96,7 +97,72 @@ planner reporting no executable work or an owed decision. The inventory lists li
 worktrees and resources at that moment. While any halt is uncleared, no session may start and the
 round cannot close. Only an operator clears a halt, with evidence of what was inspected or resolved.
 
+## Supervisor (read-only preview)
+
+`scripts/supervise.py` is a stateless loop manager. Each tick it observes the ledger (through
+`round.py status`), Git, PR and check state (through `gh`; any failure is Unknown) and session
+processes, then a pure `decide()` picks exactly one next action. In this version it only reports:
+
+```sh
+python3 scripts/supervise.py next              # one decision as JSON; writes nothing
+python3 scripts/supervise.py status            # round, assignments, sessions, halts, decision
+python3 scripts/supervise.py run --dry-run     # log decisions; poll while waiting
+```
+
+Add `--new-round` to let a level 1 or 2 supervisor propose one new round. `--autonomy N` can only
+lower the level. Exit codes: 0 action, wait or routine park; 10 needs attention (halt, hold, stop,
+stall or budget); 11 transient or unknown observation; 2 configuration; 3 another instance holds
+`.agent-runs/supervisor/lock`. `run` appends each decision to `.agent-runs/supervisor/log.jsonl`
+and keeps the latest in `last.json`; it stops at the first decision that needs an effect.
+
+### Configuration
+
+Copy [the example](.agent/supervisor.example.toml) to `.agent/supervisor.toml` and commit it. The
+supervisor reads it from the remote default branch (`git show REMOTE/BRANCH:...`), never from the
+working tree, so an agent cannot raise its own authority by editing it. An ignored
+`.agent/supervisor.local.toml` may override `[runner]` and `[budgets]` keys only. Unknown keys fail.
+Level 2 needs `policy.merge.auto_merge` and non-empty `required_checks`; level 3 also needs
+`policy.reconcile.auto_reconcile` and `allow_reconcile_merge`. A missing grant exits 2 naming it.
+
+### Decision rules
+
+First match wins: more than one open round stops; a version 1 round is parked as manual; live
+sessions are contained even while halted (kill past deadline, mark lost, acknowledge); an uncleared
+halt parks; a dirty coordinator checkout or one with commits not on the remote default stops; an
+unfetched remote head asks for a fetch; exited sessions are imported and in-flight merges verified.
+Without an open round the supervisor parks on stall (`stop.stall_rounds` closed rounds with delta
+`none`), run limit or autonomy below 3 unless `--new-round`, else proposes the next round at the
+remote default head. A round without assignments launches one planner. Each idle assignment then
+yields at most one candidate, chosen as Merge > LaunchReviewer > LaunchExecutor > Cleanup within
+`max_parallel` and the round budget; a hold on one assignment never blocks another:
+
+| Assignment | Decision |
+| --- | --- |
+| `assigned` | launch executor |
+| `blocked` result | hold |
+| result, PR missing, closed, merged externally or head moved | hold |
+| result, no review of its head | launch reviewer |
+| `needs-fix` | launch repair executor, or hold after `stop.max_repairs` |
+| review `blocked` | hold |
+| `ready`, level 1 | park awaiting a person's merge |
+| `ready`, level 2+ | merge gate: merge, wait for checks, or hold |
+| `merged`/`cancelled` with a worktree | clean up, or hold if the worktree is dirty |
+
+When every assignment is terminal, levels 1 and 2 park awaiting reconciliation; level 3 creates a
+reconcile assignment from the remote head, runs the final gate after it merges and closes the round.
+
+### Merge gate
+
+All must hold: the latest review is `ready` for the latest result head; the PR is open, not a
+draft, at that head, from the assigned branch into the default branch, `MERGEABLE` and `CLEAN` or
+`HAS_HOOKS`; every `required_checks` name succeeded on that exact SHA (newest run wins; missing,
+skipped, neutral and cancelled fail; pending past `ci_timeout_minutes` after the review holds); every
+changed path is inside the owned globs and outside `protected_paths`; the change is within
+`max_changed_lines` and has no binary files; a reconcile assignment also needs
+`allow_reconcile_merge`. A branch behind or conflicting with the default branch holds; the supervisor
+never updates branches or bypasses protection.
+
 ## Planned
 
-The supervisor (`scripts/supervise.py`), role contracts, merge policy and reconciliation automation
-follow in later changes on this branch.
+Launching agents, importing their output, publishing reviews, merging and reconciliation follow in
+later changes on this branch.
