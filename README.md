@@ -30,8 +30,19 @@ The pack contains:
 - A standard-library [round CLI](scripts/round.py) for local records and packet/result checks.
 - One [worked round](examples/one-round.md).
 
-Copy/merge `.agent/`, `scripts/round.py`, `templates/`, `SPEC.md` and `examples/one-round.md`,
-preserving their relative paths.
+Install from a clone or release of this repository into a clean checkout of your project:
+
+```sh
+python3 path/to/Reconcile-loop/scripts/install.py path/to/project --claude --codex
+```
+
+It copies `.agent/`, `scripts/round.py`, `templates/`, `SPEC.md`, `examples/one-round.md` and the
+MIT notice (`.agent/LICENSE`), preserving relative paths, and ignores `.agent-runs/` and HANDOFF.md.
+The runner flags are optional and remembered. `.agent/pack.lock` records the pack version and
+installed file hashes. Rerun the same command from a newer pack to update: unmodified files are
+replaced, while locally edited or pre-existing files are kept with the new version beside them as
+`*.pack-new` to merge and delete. It never writes your README, AGENTS.md or `.agent/config.toml`.
+Use `--dry-run` to preview. Copying the same paths manually remains supported.
 Keep your project's README and merge its operating contract from the template. Optional entry points
 are one `.agents/skills/reconcile-loop/` skill and eight `.claude/commands/` wrappers. All use the same
 canonical procedures. If your runner does not discover them, read the procedure directly as a prompt.
