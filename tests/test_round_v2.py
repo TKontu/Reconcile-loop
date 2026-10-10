@@ -12,7 +12,9 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "round.py"
 
 
-class SupervisedRoundTests(unittest.TestCase):
+class Helpers(unittest.TestCase):
+    """Temporary repository and CLI helpers shared by supervised-round tests."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -142,6 +144,7 @@ class SupervisedRoundTests(unittest.TestCase):
             ok=ok,
         )
 
+class SupervisedRoundTests(Helpers):
     def test_default_init_stays_version_one_and_refuses_supervised_options(self):
         self.cli("init", "R1", "--base", "main")
         self.assertEqual(
@@ -279,6 +282,152 @@ class SupervisedRoundTests(unittest.TestCase):
         writer.communicate(timeout=10)
         self.assertEqual(writer.returncode, 0)
         self.assertEqual(self.manifest()["assignments"]["A1"]["state"], "cancelled")
+
+
+class SessionAndHaltTests(Helpers):
+    """Sessions record launched agent processes; halts record conditions needing an operator."""
+
+    DEADLINE = "2099-01-01T00:00:00Z"
+
+    def session(self, role, *extra, ok=True, assignment="A1", head=None):
+        args = ["session", "start", "R1", "--role", role, "--runner", "claude",
+                "--session-uuid", f"uuid-{len(self.manifest()['sessions']) + 1}",
+                "--cwd", "/tmp/worktree", "--deadline", self.DEADLINE]
+        if assignment:
+            args += ["--assignment", assignment]
+        if head:
+            args += ["--head", head]
+        result = self.cli(*args, *extra, ok=ok)
+        return json.loads(result.stdout.splitlines()[0])["session"] if ok else None
+
+    def end(self, session, state="exited", *extra, ok=True):
+        return self.cli("session", "end", "R1", session, "--state", state, *extra, ok=ok)
+
+    def test_session_lifecycle_is_recorded(self):
+        self.start()
+        session = self.session("executor", "--procedure", "execute-task")
+        self.assertEqual(session, "S1")
+        record = self.manifest()["sessions"]["S1"]
+        self.assertEqual(record["state"], "launching")
+        self.assertEqual(record["role"], "executor")
+        self.assertEqual(record["assignment"], "A1")
+        self.assertEqual(record["session_uuid"], "uuid-1")
+        self.assertEqual(record["deadline_utc"], self.DEADLINE)
+        self.cli("session", "ack", "R1", "S1", "--pid", "0", ok=False)
+        self.cli("session", "ack", "R1", "S1", "--pid", "4242")
+        self.cli("session", "ack", "R1", "S1", "--pid", "4243", ok=False)
+        self.assertEqual(self.manifest()["sessions"]["S1"]["state"], "running")
+        self.end("S1", "exited", "--imported", "results/missing.json", ok=False)
+        self.end("S1", "exited", "--exit-code", "0", "--cost-usd", "-1", ok=False)
+        self.end("S1", "exited", "--exit-code", "0", "--cost-usd", "1.25")
+        record = self.manifest()["sessions"]["S1"]
+        self.assertEqual((record["state"], record["exit_code"], record["cost_usd"]),
+                         ("exited", 0, 1.25))
+        self.assertIsNotNone(record["ended_utc"])
+        self.end("S1", "lost", ok=False)
+
+    def test_session_start_validates_identity(self):
+        self.start()
+        self.session("executor", "--deadline", "tomorrow", ok=False)
+        self.session("planner", ok=False)
+        self.session("planner", assignment=None)
+        self.session("planner", assignment=None, ok=False)
+        self.session("executor", assignment="A9", ok=False)
+        self.cli(
+            "session", "start", "R1", "--role", "executor", "--assignment", "A1",
+            "--runner", "claude", "--session-uuid", "uuid-1", "--cwd", "/tmp/x",
+            "--deadline", self.DEADLINE, ok=False,
+        )
+        self.session("executor")
+
+    def test_one_live_session_per_assignment_and_role_rules(self):
+        self.start()
+        self.session("reviewer", head=self.base, ok=False)
+        self.session("merger", head=self.base, ok=False)
+        first = self.session("executor")
+        self.session("executor", ok=False)
+        self.end(first, "lost")
+        second = self.session("executor")
+        self.end(second)
+        self.submit()
+        self.session("executor", ok=False)
+        self.session("reviewer", head="0" * 40, ok=False)
+        reviewer = self.session("reviewer", head=self.base)
+        self.end(reviewer)
+        self.cli("review", "R1", "A1", "--head", self.base, "--verdict", "needs-fix",
+                 "--evidence", "x", "--session", reviewer)
+        self.session("reviewer", head=self.base, ok=False)
+        repair = self.session("executor")
+        self.end(repair)
+        self.review("ready")
+        self.session("executor", ok=False)
+        self.session("merger", head="0" * 40, ok=False)
+        merger = self.session("merger", head=self.base)
+        self.merge()
+        self.end(merger)
+        self.assertEqual(self.manifest()["assignments"]["A1"]["state"], "merged")
+
+    def test_session_review_needs_a_finished_matching_reviewer(self):
+        self.start()
+        executor = self.session("executor")
+        self.end(executor)
+        self.submit()
+        reviewer = self.session("reviewer", head=self.base)
+        args = ["review", "R1", "A1", "--head", self.base, "--verdict", "ready",
+                "--evidence", "x"]
+        self.cli(*args, "--session", reviewer, ok=False)
+        self.end(reviewer)
+        self.cli(*args, "--session", executor, ok=False)
+        self.cli(*args, "--session", reviewer, "--reviewer", "operator", ok=False)
+        self.cli(*args, "--session", reviewer)
+        self.assertEqual(
+            self.manifest()["assignments"]["A1"]["reviews"][-1]["session"], reviewer
+        )
+
+    def test_live_sessions_block_cancellation_and_closure(self):
+        self.start()
+        executor = self.session("executor")
+        self.cli("resolve", "R1", "A1", "--outcome", "cancelled", "--evidence", "x", ok=False)
+        self.end(executor, "killed")
+        self.cli("resolve", "R1", "A1", "--outcome", "cancelled", "--evidence", "Stopped")
+        planner = self.session("planner", assignment=None)
+        self.close("--delta", "none", ok=False)
+        self.end(planner)
+        self.close("--delta", "none")
+
+    def test_halts_block_dispatch_and_closure_until_cleared(self):
+        self.start()
+        inventory = self.repo / ".agent-runs" / "inventory.json"
+        inventory.write_text(json.dumps({"live_sessions": [], "worktrees": ["/tmp/w"]}))
+        self.cli("halt", "R1", "--code", "session-lost", "--detail", "S1 vanished",
+                 "--action", "Inspect /tmp/w", "--assignment", "A9", ok=False)
+        self.cli("halt", "R1", "--code", "session-lost", "--detail", "S1 vanished",
+                 "--action", "Inspect /tmp/w", "--assignment", "A1",
+                 "--inventory", str(inventory))
+        halt = self.manifest()["halts"][0]
+        self.assertEqual((halt["id"], halt["code"], halt["assignment"]),
+                         ("H1", "session-lost", "A1"))
+        self.assertEqual(halt["inventory"]["worktrees"], ["/tmp/w"])
+        self.assertIsNone(halt["cleared_utc"])
+        self.session("executor", ok=False)
+        self.cli("resolve", "R1", "A1", "--outcome", "cancelled", "--evidence", "Stopped")
+        self.close("--delta", "none", ok=False)
+        self.cli("clear-halt", "R1", "H2", "--evidence", "x", ok=False)
+        self.cli("clear-halt", "R1", "H1", "--evidence", "", ok=False)
+        self.cli("clear-halt", "R1", "H1", "--evidence", "Worktree inspected and removed")
+        self.cli("clear-halt", "R1", "H1", "--evidence", "again", ok=False)
+        self.assertIsNotNone(self.manifest()["halts"][0]["cleared_utc"])
+        self.close("--delta", "none")
+
+    def test_version_one_rounds_refuse_sessions_and_halts(self):
+        self.cli("init", "R1", "--base", "main")
+        self.assign("A1")
+        self.cli(
+            "session", "start", "R1", "--role", "executor", "--assignment", "A1",
+            "--runner", "claude", "--session-uuid", "u", "--cwd", "/tmp/x",
+            "--deadline", self.DEADLINE, ok=False,
+        )
+        self.cli("halt", "R1", "--code", "x", "--detail", "d", "--action", "a", ok=False)
 
 
 if __name__ == "__main__":

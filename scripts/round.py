@@ -189,6 +189,9 @@ def resolve(repo, root, manifest, args):
         assignment["state"] not in {"merged", "cancelled"}, "Assignment is terminal"
     )
     require(text(args.evidence), "Resolution needs review or cancellation evidence")
+    if supervised(manifest):
+        merging = {"merger"} if args.outcome == "merged" else set()
+        require_no_live_sessions(manifest, args.assignment, allow=merging)
     if args.outcome == "merged":
         bound_packet(root, assignment)
         require(assignment["state"] == "result-ready", "No candidate result to resolve")
@@ -327,6 +330,12 @@ def main():
                 close(repo, root, manifest, args)
             elif args.action == "review":
                 review(root, manifest, args)
+            elif args.action == "session":
+                session(root, manifest, args)
+            elif args.action == "halt":
+                halt(manifest, args)
+            elif args.action == "clear-halt":
+                clear_halt(manifest, args)
             save(root / "round.json", manifest)
         print(f"{args.round}: {args.action} recorded")
         return 0
@@ -455,7 +464,18 @@ def review(root, manifest, args):
     result = read(inside(root, latest))
     require(args.head == result["head_sha"], "Review does not match the latest result head")
     require(text(args.evidence), "Review needs an evidence reference")
-    require(text(args.reviewer), "Review needs a reviewer")
+    if args.session:
+        reviewer = manifest["sessions"].get(args.session)
+        require(
+            reviewer
+            and reviewer["role"] == "reviewer"
+            and reviewer["assignment"] == args.assignment
+            and reviewer["head_sha"] == args.head
+            and reviewer["state"] == "exited",
+            "Review session must be a finished reviewer of this head",
+        )
+    else:
+        require(text(args.reviewer), "Review needs a reviewer")
     assignment["reviews"].append(
         {
             "result": latest,
@@ -463,7 +483,7 @@ def review(root, manifest, args):
             "verdict": args.verdict,
             "evidence": args.evidence,
             "reviewer": args.reviewer,
-            "session": None,
+            "session": args.session,
             "utc": utc_now(),
         }
     )
@@ -474,7 +494,206 @@ def supervised_close(manifest, args):
         require(args.delta is None, "--delta needs a supervised round")
         return
     require(args.delta is not None, "Supervised closure needs --delta changed|none")
+    require_no_live_sessions(manifest)
+    require_no_halts(manifest)
     manifest["behavior_delta"] = args.delta
+
+
+LIVE_SESSION = {"launching", "running"}
+UTC = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ\Z")
+
+
+def require_supervised(manifest):
+    require(supervised(manifest), "Sessions and halts need a supervised round")
+
+
+def require_no_halts(manifest):
+    require(
+        all(h["cleared_utc"] for h in manifest["halts"]), "Round has an uncleared halt"
+    )
+
+
+def require_no_live_sessions(manifest, assignment=None, allow=frozenset()):
+    for name, record in manifest["sessions"].items():
+        require(
+            record["state"] not in LIVE_SESSION
+            or record["role"] in allow
+            or (assignment is not None and record["assignment"] != assignment),
+            f"Session {name} is still live",
+        )
+
+
+def utc_value(value):
+    require(text(value) and UTC.match(value), "Expected YYYY-MM-DDTHH:MM:SSZ")
+    datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    return value
+
+
+def session(root, manifest, args):
+    require_supervised(manifest)
+    sessions = manifest["sessions"]
+    if args.step == "start":
+        start_session(root, manifest, args)
+        return
+    record = sessions[args.session]
+    if args.step == "ack":
+        require(record["state"] == "launching", "Only a launching session can be acknowledged")
+        require(args.pid > 0, "Process id must be positive")
+        record.update(pid=args.pid, state="running")
+        return
+    require(record["state"] in LIVE_SESSION, "Session has already ended")
+    require(args.cost_usd is None or args.cost_usd >= 0, "Cost must not be negative")
+    if args.imported:
+        require(inside(root, args.imported).is_file(), "Imported record does not exist")
+    record.update(
+        state=args.state,
+        exit_code=args.exit_code,
+        cost_usd=args.cost_usd,
+        imported=args.imported,
+        ended_utc=utc_now(),
+    )
+
+
+def start_session(root, manifest, args):
+    require_no_halts(manifest)
+    sessions = manifest["sessions"]
+    for field in ("runner", "session_uuid", "cwd"):
+        require(text(getattr(args, field)), f"Session needs --{field.replace('_', '-')}")
+    require(
+        all(s["session_uuid"] != args.session_uuid for s in sessions.values()),
+        "Session UUID already recorded",
+    )
+    utc_value(args.deadline)
+    if args.role == "planner":
+        require(args.assignment is None, "Planner sessions take no assignment")
+        require(
+            not any(
+                s["role"] == "planner" and s["state"] in LIVE_SESSION
+                for s in sessions.values()
+            ),
+            "A planner session is already live",
+        )
+    else:
+        assignment = manifest["assignments"][args.assignment]
+        require(
+            not any(
+                s["assignment"] == args.assignment and s["state"] in LIVE_SESSION
+                for s in sessions.values()
+            ),
+            "Assignment already has a live session",
+        )
+        current = latest_review(assignment) if assignment["results"] else None
+        if args.role == "executor":
+            require(
+                assignment["state"] == "assigned"
+                or (
+                    assignment["state"] == "result-ready"
+                    and current
+                    and current["verdict"] == "needs-fix"
+                ),
+                "Executor needs an assigned or needs-fix assignment",
+            )
+        elif args.role == "reviewer":
+            require(assignment["state"] == "result-ready", "No candidate result to review")
+            result = read(inside(root, assignment["results"][-1]))
+            require(args.head == result["head_sha"], "Reviewer head is not the latest result")
+            require(current is None, "Latest result already has a review")
+        else:
+            require(assignment["state"] == "result-ready", "No candidate result to merge")
+            require_ready_review(assignment, args.head)
+    name = f"S{len(sessions) + 1}"
+    sessions[name] = {
+        "role": args.role,
+        "assignment": args.assignment,
+        "procedure": args.procedure,
+        "runner": args.runner,
+        "session_uuid": args.session_uuid,
+        "cwd": args.cwd,
+        "head_sha": args.head,
+        "pid": None,
+        "started_utc": utc_now(),
+        "deadline_utc": args.deadline,
+        "state": "launching",
+        "exit_code": None,
+        "cost_usd": None,
+        "imported": None,
+        "ended_utc": None,
+    }
+    print(json.dumps({"session": name}))
+
+
+def halt(manifest, args):
+    require_supervised(manifest)
+    for field in ("code", "detail", "action"):
+        require(text(getattr(args, field)), f"Halt needs --{field}")
+    if args.assignment is not None:
+        require(args.assignment in manifest["assignments"], "Unknown assignment")
+    if args.session is not None:
+        require(args.session in manifest["sessions"], "Unknown session")
+    inventory = read(Path(args.inventory)) if args.inventory else None
+    manifest["halts"].append(
+        {
+            "id": f"H{len(manifest['halts']) + 1}",
+            "utc": utc_now(),
+            "code": args.code,
+            "assignment": args.assignment,
+            "session": args.session,
+            "detail": args.detail,
+            "action": args.action_needed,
+            "inventory": inventory,
+            "cleared_utc": None,
+            "cleared_evidence": None,
+        }
+    )
+
+
+def clear_halt(manifest, args):
+    require_supervised(manifest)
+    matches = [h for h in manifest["halts"] if h["id"] == args.halt]
+    require(matches, "Unknown halt")
+    require(matches[0]["cleared_utc"] is None, "Halt already cleared")
+    require(text(args.evidence), "Clearing a halt needs evidence")
+    matches[0].update(cleared_utc=utc_now(), cleared_evidence=args.evidence)
+
+
+def add_session_arguments(actions):
+    sub = actions.add_parser("session")
+    steps = sub.add_subparsers(dest="step", required=True)
+    start = steps.add_parser("start")
+    start.add_argument("round")
+    start.add_argument(
+        "--role", choices=["planner", "executor", "reviewer", "merger"], required=True
+    )
+    start.add_argument("--assignment")
+    start.add_argument("--head")
+    start.add_argument("--procedure")
+    for field in ("runner", "session-uuid", "cwd", "deadline"):
+        start.add_argument(f"--{field}", required=True)
+    ack = steps.add_parser("ack")
+    ack.add_argument("round")
+    ack.add_argument("session")
+    ack.add_argument("--pid", type=int, required=True)
+    end = steps.add_parser("end")
+    end.add_argument("round")
+    end.add_argument("session")
+    end.add_argument(
+        "--state", choices=["exited", "timed-out", "killed", "lost"], required=True
+    )
+    end.add_argument("--exit-code", type=int)
+    end.add_argument("--cost-usd", type=float)
+    end.add_argument("--imported", help="Record path inside the round directory")
+    sub = actions.add_parser("halt")
+    sub.add_argument("round")
+    for field in ("code", "detail"):
+        sub.add_argument(f"--{field}", required=True)
+    sub.add_argument("--action", dest="action_needed", required=True)
+    sub.add_argument("--assignment")
+    sub.add_argument("--session")
+    sub.add_argument("--inventory", help="JSON file listing live sessions and resources")
+    sub = actions.add_parser("clear-halt")
+    sub.add_argument("round")
+    sub.add_argument("halt")
+    sub.add_argument("--evidence", required=True)
 
 
 def add_supervised_arguments(actions):
@@ -493,7 +712,10 @@ def add_supervised_arguments(actions):
         "--verdict", choices=["ready", "needs-fix", "blocked"], required=True
     )
     sub.add_argument("--evidence", required=True)
-    sub.add_argument("--reviewer", required=True)
+    who = sub.add_mutually_exclusive_group(required=True)
+    who.add_argument("--reviewer")
+    who.add_argument("--session", help="Finished reviewer session")
+    add_session_arguments(actions)
 
 
 if __name__ == "__main__":
