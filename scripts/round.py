@@ -380,6 +380,11 @@ def static_prefix(pattern):
     return re.split(r"[*?\[]", pattern, maxsplit=1)[0]
 
 
+def normalized_path(pattern):
+    """Relative and canonical, so equal paths compare equal: no empty, `.` or `..` segments."""
+    return text(pattern) and all(s not in {"", ".", ".."} for s in pattern.split("/"))
+
+
 def supervised_assignment(repo, manifest, args):
     """Validate ownership options; return extra packet lines and manifest fields."""
     if not supervised(manifest):
@@ -392,8 +397,8 @@ def supervised_assignment(repo, manifest, args):
     owns = args.owns or []
     resources = args.resource or []
     require(
-        owns and all(text(p) and not p.startswith("/") for p in owns),
-        "Supervised assignment needs relative --owns paths",
+        owns and all(normalized_path(p) for p in owns),
+        "Supervised assignment needs normalized relative --owns paths",
     )
     require(all(text(r) for r in resources), "Resource names must not be empty")
     others = manifest["assignments"].values()
