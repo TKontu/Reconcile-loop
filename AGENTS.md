@@ -14,3 +14,7 @@ Read README.md and SPEC.md. Keep one maintained version; expanded features remai
 
 For adopting projects, merge templates/AGENTS.md into their own instructions. This contributor file
 is not a replacement for an application's operating contract.
+
+On the `autonomous-reconcile-loop` branch: supervision code, records and docs live here, not on main.
+Fix generic version 1 ledger bugs on main first, then merge main into this branch (merge commit; no
+rebase or squash). Keep edits to files shared with main to small, appended hook points.

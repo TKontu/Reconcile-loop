@@ -98,3 +98,6 @@ repositories; they do not prove a live runner's recovery or external branch-prot
 Config uses TOML for project paths and verification argv. The CLI itself does not execute or require
 that config: the phase procedures use it for engineering decisions and checks. This keeps scaffolding
 independent of a particular test runner, hosting provider or agent vendor.
+
+The `autonomous-reconcile-loop` branch adds opt-in supervised (version 2) rounds; see
+[SUPERVISION.md](SUPERVISION.md).
