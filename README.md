@@ -15,6 +15,28 @@ The architecture defines the target; one backlog records current status and depe
 bound execution, PRs carry evidence, and a fresh planner reconstructs state without previous chats.
 Only the next executable frontier needs detailed planning.
 
+## Quick start
+
+For people, from a clean checkout of your project:
+
+```sh
+git clone https://github.com/TKontu/Reconcile-loop ../Reconcile-loop
+python3 ../Reconcile-loop/scripts/install.py . --claude --codex
+```
+
+Then ask your agent to follow [bootstrap](.agent/commands/bootstrap.md) (`/bootstrap` in Claude Code)
+and commit the result. Each round runs `takeoff → plan-round → execute-task (one per executor) →
+review-round → merge-round → reconcile`. To update, pull the pack, rerun the installer and merge any
+`*.pack-new` files.
+
+For agents, paste this prompt:
+
+> Adopt Reconcile-loop in this repository. Clone https://github.com/TKontu/Reconcile-loop into a
+> temporary directory, run its `scripts/install.py` against this repository root from a clean
+> checkout (add `--claude` and/or `--codex` for the runners in use), then follow
+> `.agent/commands/bootstrap.md`. Stop with a ready first item or named setup gaps; do not dispatch,
+> publish or merge.
+
 ## Adopt it
 
 Bring your own architecture, README and backlog. Ask an agent to follow
