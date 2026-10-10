@@ -72,7 +72,10 @@ operating envelope and the actual behavior delta. A failed required gate keeps t
 Do not silently edit the target to match implementation.
 
 The CLI requires terminal outcomes, supplied merges reachable from final main, a reconciliation
-evidence reference, and a bounded handoff naming the same full SHA. `--reconciliation` accepts an
+evidence reference, and a bounded handoff naming the same full SHA, a valid
+`Generated-UTC: YYYY-MM-DDTHH:MM:SSZ` timestamp, and nonempty `Round delta`, `Open work` and
+`Next action` sections (`None` is valid for open work; template placeholders are not content).
+These are structural checks, not a judgment of the prose. `--reconciliation` accepts an
 existing tracked file path or an HTTP(S) evidence URL, such as the reconciliation PR. Local files
 must be nonempty and committed at final main. URLs are recorded without network access; the reviewer
 verifies that the reference is durable, accessible, and records the round's actual reconciliation
@@ -80,8 +83,8 @@ into tracked state. The caller also supplies final verification evidence. These 
 evidence truth, required-gate completeness, resource release, or whether the ref really is remote main.
 
 `init` refuses another round while any local round remains open. Cancelling work does not waive
-reconciliation. Only after closure should the planner session end and a new one start. No automated
-supervisor is required; a human or agent can drive each phase.
+reconciliation. A new round requires closure; an interrupted planner session may end while its round
+remains open. No automated supervisor is required; a human or agent can drive each phase.
 
 ## Recovery and limits
 
@@ -90,6 +93,11 @@ keep it at most 50 lines / 500 words with full Main-SHA, UTC timestamp and next 
 must also live in PRs or tracked files so lost local records are recoverable. If the ledger is lost,
 reconstruct and inspect active workers before initiating anything; the CLI cannot detect remote orphaned
 work. Do not blindly replay a command that may have changed state.
+On resumption, recover the existing round and compare its results with current PR heads and actual
+merges. Inspect surviving workers and mutable-resource ownership before dispatching replacements.
+An unavailable required gate stays pending: record its affected head, recovery owner and next action
+in the existing result/PR evidence. Resume the owed work without changing delivered packets or
+repeating completed external actions.
 
 A fresh planner without prior chats must be able to name the remaining work, assigned branch/head,
 required evidence and next permitted action. The tests exercise ledger behavior in temporary Git

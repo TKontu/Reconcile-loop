@@ -4,7 +4,8 @@ This repository maintains the lean workflow, phase instructions, templates and l
 Read README.md and SPEC.md. Keep one maintained version; expanded features remain in the archived
 `docs/standalone-patterns` branch until a demonstrated need justifies adding them here.
 
-- `.agent/commands/` owns phase procedures; runner wrappers point there. Avoid duplicate policy.
+- `.agent/commands/` owns phase procedures and optional helpers (`status`, `pr-verdict`); runner
+  wrappers and `.claude/agents/` subagents point there or stay runner-specific. Avoid duplicate policy.
 - Preserve the protocol's isolation, evidence and reconciliation guarantees. Keep project-specific
   rules, generic development helpers and unattended supervision out of the lean core.
 - For CLI behavior changes demonstrate a failing test first, implement the smallest fix, then run

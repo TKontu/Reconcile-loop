@@ -6,6 +6,7 @@ import json
 import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -242,6 +243,28 @@ def close(repo, root, manifest, args):
         "Handoff is too long",
     )
     require(text(args.evidence), "Closure needs final verification evidence")
+    timestamp = re.search(
+        r"^Generated-UTC: ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)$",
+        handoff,
+        re.MULTILINE,
+    )
+    require(timestamp is not None, "Handoff needs Generated-UTC: YYYY-MM-DDTHH:MM:SSZ")
+    try:
+        datetime.strptime(timestamp[1], "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        raise ValueError("Handoff Generated-UTC must be a valid UTC timestamp") from None
+    for heading in ("Round delta", "Open work", "Next action"):
+        section = re.search(
+            rf"^## {heading}[ \t]*\n(.*?)(?=^## |\Z)",
+            handoff,
+            re.MULTILINE | re.DOTALL,
+        )
+        body = re.sub(r"<!--.*?-->", "", section[1], flags=re.DOTALL) if section else ""
+        # Template placeholders such as <One exact action> are not content; autolinks are.
+        body = re.sub(
+            r"^[ \t]*<(?![^>\n]*://)[^<>\n]*>[ \t]*$", "", body, flags=re.MULTILINE
+        )
+        require(re.search(r"\w", body), f"Handoff needs a nonempty '{heading}' section")
     manifest.update(
         state="closed",
         final_main_sha=final,

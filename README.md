@@ -47,6 +47,8 @@ one small executable item. Your project need not adopt any particular taxonomy, 
 The pack contains:
 
 - [A short protocol](SPEC.md) and the eight [phase procedures](.agent/commands/bootstrap.md).
+- Optional read-only [status](.agent/commands/status.md) and advisory [PR verdict](.agent/commands/pr-verdict.md)
+  helpers.
 - [Assignment](templates/assignment.md), [result](templates/result.json),
   [item](templates/item.md) and [handoff](templates/handoff.md) templates.
 - A standard-library [round CLI](scripts/round.py) for local records and packet/result checks.
@@ -66,8 +68,9 @@ replaced, while locally edited or pre-existing files are kept with the new versi
 `*.pack-new` to merge and delete. It never writes your README, AGENTS.md or `.agent/config.toml`.
 Use `--dry-run` to preview. Copying the same paths manually remains supported.
 Keep your project's README and merge its operating contract from the template. Optional entry points
-are one `.agents/skills/reconcile-loop/` skill and eight `.claude/commands/` wrappers. All use the same
-canonical procedures. If your runner does not discover them, read the procedure directly as a prompt.
+are one `.agents/skills/reconcile-loop/` skill, ten `.claude/commands/` wrappers and three
+`.claude/agents/` subagents (review lens, CI watcher, quick fixer). All use the same canonical
+procedures. If your runner does not discover them, read the procedure directly as a prompt.
 Ignore `.agent-runs/` and HANDOFF.md; keep durable findings in tracked records or PRs.
 
 ## Run a round
