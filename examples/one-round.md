@@ -61,3 +61,27 @@ A new round is refused until this succeeds. Stop the planner session. A fresh pl
 the outcome, remaining runtime work and next permitted action from the repository/PRs alone.
 
 This is enough for a human or agent to drive the loop; there is no supervisor process to install.
+
+## Interrupted round with CI unavailable
+
+Suppose a later round has two assignments. A1 is merged; A2 has a PR but its required CI is queued
+because runners are unavailable. Verify A1's actual merge and record its merged outcome if it has
+not already been recorded. For A2, submit a candidate result with the gate marked `unavailable`;
+retain earlier results unchanged. Its evidence names the affected head, the coordinator as recovery owner, and the
+next action: restore runner availability and verify that head's required checks. A `blocked`
+result with the same details is also appropriate if execution cannot continue.
+
+Write the bounded handoff and end the interrupted session with the round still open. Do not cancel
+A2 just to close the round. The replacement planner:
+
+1. Reads the open ledger, original packets, saved results and actual PR/merge state.
+2. Checks whether A2's worker survives and who owns its mutable resources; reuses it or confirms it
+   stopped and releases ownership before assigning a replacement the unchanged packet.
+3. Records an already-completed merge missing from the ledger only after verifying it; never merges
+   A1 again or re-executes completed work solely because the session changed.
+4. Restores access through the project's authorized operator, runs only outstanding or invalidated
+   checks, and imports a new A2 result with actual evidence. A changed PR head requires fresh review.
+5. Reviews and merges A2, verifies combined state, reconciles both outcomes and closes the same round.
+
+Runner restoration is project policy, not a CLI capability. No additional round, runtime state or
+separate status document is needed for this recovery.
