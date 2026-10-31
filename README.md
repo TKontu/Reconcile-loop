@@ -35,9 +35,17 @@ The pack contains:
 Copy/merge `.agent/`, `scripts/round.py`, `templates/`, `SPEC.md` and `examples/one-round.md`,
 preserving their relative paths.
 Keep your project's README and merge its operating contract from the template. Optional entry points
-are one `.agents/skills/reconcile-loop/` skill, ten `.claude/commands/` wrappers and three
+are the `.agents/skills/` Codex skills, ten `.claude/commands/` wrappers and three
 `.claude/agents/` subagents (review lens, CI watcher, quick fixer). All use the same canonical
 procedures. If your runner does not discover them, read the procedure directly as a prompt.
+For Codex, copy the entire `.agents/skills/` directory alongside the canonical files above.
+It includes the general `reconcile-loop` skill, named skills for all ten commands, and the three
+helpers. The helper skills also require `.claude/agents/`, which owns their shared instructions. Invoke a named skill with `$takeoff`, `$handoff`, `$plan-round`, etc.; a plain-text
+`/takeoff` request also identifies the intended skill, but these files do not register native
+Codex slash commands. Start a new session in the adopting repository to discover its skills.
+Keep existing project skills when adopting; resolve same-name conflicts explicitly instead of
+overwriting a project's workflow.
+
 Ignore `.agent-runs/` and HANDOFF.md; keep durable findings in tracked records or PRs.
 
 ## Run a round
