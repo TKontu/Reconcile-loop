@@ -603,8 +603,36 @@ class RoundTests(unittest.TestCase):
         self.spec.unlink()
         self.git("add", ".gitignore")
         self.git("commit", "-qm", "remove runtime ignore")
-        self.cli("init", "R1", "--base", "main", ok=False)
+        rejected = self.cli("init", "R1", "--base", "main", ok=False)
+        self.assertIn(".gitignore", rejected.stderr)
         self.assertFalse((self.repo / ".agent-runs/R1").exists())
+
+    def test_git_failure_reports_git_reason(self):
+        rejected = self.cli("init", "R1", "--base", "no-such-ref", ok=False)
+        self.assertIn("fatal:", rejected.stderr)
+
+    def test_unreadable_round_record_names_the_file(self):
+        self.start()
+        (self.repo / ".agent-runs/R1/round.json").write_text("")
+        rejected = self.cli("init", "R2", "--base", "main", ok=False)
+        self.assertIn("round.json", rejected.stderr)
+
+    def test_merged_resolution_requires_the_reviewed_head(self):
+        self.start()
+        self.cli("record", "R1", "--result", str(self.submit()))
+        rejected = self.cli(
+            "resolve",
+            "R1",
+            "A1",
+            "--outcome",
+            "merged",
+            "--merge",
+            self.base,
+            "--evidence",
+            "reviewed",
+            ok=False,
+        )
+        self.assertIn("--head", rejected.stderr)
 
     def test_unsafe_round_id_and_dirty_base_are_rejected(self):
         self.cli("init", "../outside", "--base", "main", ok=False)

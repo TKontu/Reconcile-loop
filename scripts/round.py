@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -23,9 +24,12 @@ def text(value):
 
 
 def git(repo, *args):
-    return subprocess.check_output(
-        ["git", "-C", str(repo), *args], text=True, stderr=subprocess.PIPE
-    ).strip()
+    try:
+        return subprocess.check_output(
+            ["git", "-C", str(repo), *args], text=True, stderr=subprocess.PIPE
+        ).strip()
+    except subprocess.CalledProcessError as error:
+        raise ValueError(error.stderr.strip() or f"git {args[0]} failed") from None
 
 
 def commit(repo, ref):
@@ -53,7 +57,10 @@ def read(path):
 def save(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(data, indent=2) + "\n")
+    with temporary.open("w") as handle:
+        handle.write(json.dumps(data, indent=2) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
     temporary.replace(path)
 
 
@@ -102,13 +109,19 @@ def validate_result(data, manifest, assignment):
 def initialize(repo, root, args):
     require(not root.exists(), "Round already exists")
     require(not git(repo, "status", "--porcelain"), "Start from a clean checkout")
-    git(repo, "check-ignore", "-q", ".agent-runs/probe")
+    try:
+        git(repo, "check-ignore", "-q", ".agent-runs/probe")
+    except ValueError:
+        raise ValueError(
+            "Add .agent-runs/ to .gitignore before initializing a round"
+        ) from None
     base = commit(repo, args.base)
     for other in root.parent.glob("*/round.json"):
-        require(
-            read(other).get("state") == "closed",
-            f"Unreconciled round: {other.parent.name}",
-        )
+        try:
+            state = read(other).get("state")
+        except ValueError:
+            raise ValueError(f"Unreadable round record: {other}") from None
+        require(state == "closed", f"Unreconciled round: {other.parent.name}")
     save(
         root / "round.json",
         {
@@ -189,6 +202,7 @@ def resolve(repo, root, manifest, args):
         require(assignment["state"] == "result-ready", "No candidate result to resolve")
         result = read(inside(root, assignment["results"][-1]))
         validate_result(result, manifest, assignment)
+        require(text(args.head), "Merged resolution needs the reviewed --head")
         require(
             args.head == result["head_sha"],
             "Review does not match the current result head",
