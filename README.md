@@ -1,79 +1,72 @@
 # Reconcile-loop
 
-A small repo-native workflow for architecture-constrained agent engineering.
+A workflow for running coding agents on a project in short rounds. In each round a planner agent picks
+small tasks, separate agents implement them on their own branches, the PRs are reviewed and merged,
+and the backlog is updated to match what was actually merged. The next round starts in a new session
+that reads the repository, not earlier chats.
 
-> Agents are disposable. Project state is durable.
+Agents forget between sessions and tend to report their own work as done. Here progress lives in files
+in the repo, and a task only counts once it has been reviewed, merged and recorded in the backlog.
 
-```text
-architecture + current frontier
-  → plan → isolated execution → review → merge → reconcile
-  → fresh planner → repeat
+## What you need
+
+- Git and Python 3.11+.
+- A coding agent: Claude Code, Codex, or any agent that can follow a Markdown prompt.
+- In your project: a document describing what you are building, a backlog of tasks (plain Markdown
+  is fine) and a command that checks your work, such as your test suite.
+
+## Quickstart
+
+```sh
+git clone https://github.com/TKontu/Reconcile-loop /tmp/reconcile-loop   # add --branch vX.Y.Z to pin a release
+cd your-project
+cp -r /tmp/reconcile-loop/{.agent,.agents,.claude,scripts,templates,examples,SPEC.md} .
 ```
 
-**A round ends when its observations are reconciled into project state, not merely when its PRs merge.**
-The architecture defines the target; one backlog records current status and dependencies. Assignments
-bound execution, PRs carry evidence, and a fresh planner reconstructs state without previous chats.
-Only the next executable frontier needs detailed planning.
+If your project already has `.claude/` or `.agents/`, merge by hand instead of overwriting. Then open
+your agent in the project and run bootstrap:
 
-## Adopt it
+- Claude Code: `/bootstrap`
+- Codex: `$bootstrap`
+- Other agents: "Follow `.agent/commands/bootstrap.md`"
 
-Bring your own architecture, README and backlog. Ask an agent to follow
-[bootstrap](.agent/commands/bootstrap.md). It maps existing paths and verification into
-[the config template](.agent/config.example.toml), adapts [AGENTS.md](templates/AGENTS.md), and prepares
-one small executable item. Your project need not adopt any particular taxonomy, stack or agent vendor.
-
-The pack contains:
-
-- [A short protocol](SPEC.md) and the eight [phase procedures](.agent/commands/bootstrap.md).
-- Optional read-only [status](.agent/commands/status.md) and advisory [PR verdict](.agent/commands/pr-verdict.md)
-  helpers.
-- [Assignment](templates/assignment.md), [result](templates/result.json),
-  [item](templates/item.md) and [handoff](templates/handoff.md) templates.
-- A standard-library [round CLI](scripts/round.py) for local records and packet/result checks.
-- One [worked round](examples/one-round.md).
-
-Copy/merge `.agent/`, `scripts/round.py`, `templates/`, `SPEC.md` and `examples/one-round.md`,
-preserving their relative paths.
-Keep your project's README and merge its operating contract from the template. Optional entry points
-are the `.agents/skills/` Codex skills, ten `.claude/commands/` wrappers and three
-`.claude/agents/` subagents (review lens, CI watcher, quick fixer). All use the same canonical
-procedures. If your runner does not discover them, read the procedure directly as a prompt.
-For Codex, copy the entire `.agents/skills/` directory alongside the canonical files above.
-It includes the general `reconcile-loop` skill, named skills for all ten commands, and the three
-helpers. The helper skills also require `.claude/agents/`, which owns their shared instructions. Invoke a named skill with `$takeoff`, `$handoff`, `$plan-round`, etc.; a plain-text
-`/takeoff` request also identifies the intended skill, but these files do not register native
-Codex slash commands. Start a new session in the adopting repository to discover its skills.
-Keep existing project skills when adopting; resolve same-name conflicts explicitly instead of
-overwriting a project's workflow.
-
-Ignore `.agent-runs/` and HANDOFF.md; keep durable findings in tracked records or PRs.
+Bootstrap writes `.agent/config.toml` with your real paths and check command, adds the workflow rules
+to your `AGENTS.md`, ignores `.agent-runs/` and gets one task ready. It does not start any work.
 
 ## Run a round
 
-| Phase | Contract |
-| --- | --- |
-| [takeoff](.agent/commands/takeoff.md) | Reconstruct current state; no selection or mutations |
-| [plan-round](.agent/commands/plan-round.md) | Choose executable work and produce packets; no execution |
-| [execute-task](.agent/commands/execute-task.md) | Implement in isolation and return evidence; no merge |
-| [review-round](.agent/commands/review-round.md) | Verify current heads against scope and acceptance |
-| [merge-round](.agent/commands/merge-round.md) | Merge authorized reviewed changes serially |
-| [reconcile](.agent/commands/reconcile.md) | Update project truth and close the round |
-| [handoff](.agent/commands/handoff.md) | Record a bounded delta for the next fresh session |
+| Step | Who | What happens |
+| --- | --- | --- |
+| [takeoff](.agent/commands/takeoff.md) | Planner, new session | Reads the repo and reports where things stand |
+| [plan-round](.agent/commands/plan-round.md) | Planner | Picks tasks and writes one assignment file per task |
+| [execute-task](.agent/commands/execute-task.md) | One agent per task, own checkout | Implements, runs checks, opens a PR, returns a result file |
+| [review-round](.agent/commands/review-round.md) | Planner and a reviewer | Checks each PR against its assignment |
+| [merge-round](.agent/commands/merge-round.md) | Whoever may merge, usually you | Merges approved PRs |
+| [reconcile](.agent/commands/reconcile.md) | Planner | Updates the backlog to match what merged and closes the round |
+| [handoff](.agent/commands/handoff.md) | Planner | Writes a short note for the next session |
 
-Planner decisions remain with the planner; executors own only assigned work. Existing authorization
-applies; reserved decisions block dependent work while independent authorized work can continue.
+Start each step the same way as bootstrap (`/takeoff`, `$takeoff`, or point the agent at the file).
+You carry files between agents: give each implementing agent its assignment from `.agent-runs/`, then
+record the result it returns with `python3 scripts/round.py record`. The script only keeps the round
+records consistent. It does not start agents, run tests or merge. The [worked example](examples/one-round.md)
+shows a full round with commands.
 
-The CLI requires Python 3.11+ and Git. Run `python3 scripts/round.py --help`. It does not launch agents,
-run your tests, approve work, contact the PR host, merge branches or manage service locks. Use one
-coordinator and run ledger writes serially. Manual packet delivery is supported; unattended
-supervision can be added later against the same contracts.
+Optional helpers: [status](.agent/commands/status.md) reports on the backlog without changing anything,
+and [pr-verdict](.agent/commands/pr-verdict.md) gives an advisory review of one PR. Claude Code also
+gets three subagents (review-lens, ci-watcher, quick-fixer). Their Codex skills read the same files
+under `.claude/agents/`, so copy that folder for Codex too.
 
-## Maintain this pack
+## Reference
 
-Run `python3 -m unittest discover -s tests` and `git diff --check`. The tests use temporary local Git
-repositories; no service, network, third-party Python dependency or agent runtime is required.
+- [SPEC.md](SPEC.md): the full rules.
+- [.agent/commands/](.agent/commands/bootstrap.md): instructions for each step.
+- [templates/](templates/assignment.md): assignment, result, task and handoff templates.
+- `python3 scripts/round.py --help`: the round script.
 
-Only `main` is maintained. The [expanded experimental snapshot](https://github.com/TKontu/Reconcile-loop/tree/docs/standalone-patterns)
-is retained for reference and receives no parallel feature development.
+## Contributing
 
-Licensed under the [MIT License](LICENSE). Retain its notice when copying the scaffolding.
+Run `python3 -m unittest discover -s tests` and `git diff --check`. The tests need no network or extra
+packages. Only `main` is maintained; an older, larger version is kept on the
+[docs/standalone-patterns](https://github.com/TKontu/Reconcile-loop/tree/docs/standalone-patterns) branch.
+
+MIT licensed ([LICENSE](LICENSE)). Keep the notice when you copy the files.
