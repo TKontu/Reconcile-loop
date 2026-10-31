@@ -5,6 +5,8 @@ small tasks, separate agents implement them on their own branches, the PRs are r
 and the backlog is updated to match what was actually merged. The next round starts in a new session
 that reads the repository, not earlier chats.
 
+![The reconcile loop: takeoff, plan-round, parallel execute-task lanes, review-round, merge-round, reconcile, handoff, then /clear and repeat](loop.png)
+
 Agents forget between sessions and tend to report their own work as done. Here progress lives in files
 in the repo, and a task only counts once it has been reviewed, merged and recorded in the backlog.
 
