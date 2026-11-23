@@ -17,4 +17,5 @@ merge_authority = "designated reviewer/operator; executor never self-merges"
 
 # Optional: only read by scripts/round_supervisor.py (see .agent/supervisor.md).
 # [supervisor]
+# name = "my-repo"          # Herdr name slug; defaults to the checkout's directory name
 # permission_mode = "auto"   # unattended sessions cannot answer approval dialogs

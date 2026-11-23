@@ -12,8 +12,8 @@ Herdr pane (`HERDR_ENV=1`) in the project root.
 
 ## How a round turns over
 
-1. The supervisor opens tab `round-planner`, starts `claude --session-id <new uuid>` as Herdr agent
-   `round-planner`, and submits the round prompt: takeoff, then one full round.
+1. The supervisor opens tab `round-planner-<repo>`, starts `claude --session-id <new uuid>` as Herdr
+   agent `round-planner-<repo>`, and submits the round prompt: takeoff, then one full round.
 2. The orchestrator's last action is `round_supervisor.py complete --outcome continue`. It refuses
    unless `HANDOFF.md` was written this round and passes `python3 scripts/round.py check-handoff`.
    Herdr's `idle` is never taken as completion, because an orchestrator waiting on CI is idle too.
@@ -22,7 +22,8 @@ Herdr pane (`HERDR_ENV=1`) in the project root.
 
 ## Live work
 
-Long work runs as Herdr lanes in their own `live-<lane>` tabs. The supervisor never touches them.
+Long work runs as Herdr lanes in their own `live-<repo>-<lane>` tabs, opened in the supervisor's
+workspace. Lanes never create Herdr workspaces. The supervisor never touches them.
 The round carries such a lane in `HANDOFF.md` instead of waiting, and the next takeoff finds it
 there and in `.agent-runs/`. Anything long must be a Herdr lane, because the orchestrator's own
 subagents and background commands end with its session.
@@ -49,7 +50,15 @@ optional `[supervisor] permission_mode` (default `auto`). Unattended sessions ca
 approval dialogs, so the mode must let a round run; the watchdog refuses any dialog left open.
 Merges still follow `[policy] merge_authority`: when it is not the planner's, approved PRs are
 parked in `HANDOFF.md` and on the dashboard as owed to the operator. `--claude-arg` adds flags to
-every session. `ROUND_SUPERVISOR_ROOT` points the supervisor at another checkout.
+every session.
+
+Herdr agent names are global across projects, so every name the supervisor uses carries the repo
+slug: `[supervisor] name` if set, else the checkout's directory name (lowercased, non-alphanumerics
+as `-`). Several repos can then run loops side by side. Two checkouts with the same directory name
+need distinct `[supervisor] name` values; `run --dry-run` and `status` print the names, and the
+supervisor refuses to adopt a planner agent whose working directory is another checkout. Tabs are
+created with `--workspace "$HERDR_WORKSPACE_ID"` (the supervisor's own workspace), never the
+focused one, and `run` refuses without that variable. `ROUND_SUPERVISOR_ROOT` points the supervisor at another checkout.
 
 ## Operating it
 
@@ -59,7 +68,7 @@ State lives in `.agent-runs/supervisor/` (`supervisor.log`, `news.jsonl`, `curre
 ```sh
 S=scripts/round_supervisor.py
 python3 $S run --dry-run          # policy and preconditions; starts nothing
-python3 $S up --for 8h            # tab round-loop: supervisor on top, dashboard below
+python3 $S up --for 8h            # tab round-loop-<repo>: supervisor on top, dashboard below
 python3 $S status
 python3 $S stop-after-round       # the normal stop
 python3 $S stop-in 2h
@@ -79,6 +88,6 @@ To watch the loop from a separate session, use the [loop-manager](commands/loop-
 
 Check each step before the next: `--dry-run` finds the transcript directory and a working
 fingerprint; one `up` round reaches `complete` only after a valid handoff; turnover closes only the
-planner tab and leaves a dummy `live-*` lane alone; the next round's takeoff lists that lane; a
+planner tab and leaves a dummy `live-<repo>-*` lane alone; the next round's takeoff lists that lane; a
 killed and restarted supervisor adopts the round; then two real rounds and `stop-after-round`.
 A stop leaves `HALT`; run `clear-halt` before the next `up`.
