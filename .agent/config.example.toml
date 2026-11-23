@@ -14,3 +14,7 @@ environment = "offline; no mutable services"
 [policy]
 merge_authority = "designated reviewer/operator; executor never self-merges"
 # Point to existing policy/runbooks when this short description is insufficient.
+
+# Optional: only read by scripts/round_supervisor.py (see .agent/supervisor.md).
+# [supervisor]
+# permission_mode = "auto"   # unattended sessions cannot answer approval dialogs

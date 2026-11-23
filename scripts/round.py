@@ -221,6 +221,40 @@ def resolve(repo, root, manifest, args):
     assignment["resolution"] = args.evidence
 
 
+def validate_handoff(handoff):
+    """Shape checks shared by close and check-handoff; Main-SHA identity is close's job."""
+    require(
+        len(handoff.splitlines()) <= 50 and len(handoff.split()) <= 500,
+        "Handoff is too long",
+    )
+    timestamp = re.search(
+        r"^Generated-UTC: ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)$",
+        handoff,
+        re.MULTILINE,
+    )
+    require(timestamp is not None, "Handoff needs Generated-UTC: YYYY-MM-DDTHH:MM:SSZ")
+    try:
+        datetime.strptime(timestamp[1], "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        raise ValueError("Handoff Generated-UTC must be a valid UTC timestamp") from None
+    for heading in ("Round delta", "Open work", "Next action"):
+        section = re.search(
+            rf"^## {heading}[ \t]*\n(.*?)(?=^## |\Z)",
+            handoff,
+            re.MULTILINE | re.DOTALL,
+        )
+        body = re.sub(r"<!--.*?-->", "", section[1], flags=re.DOTALL) if section else ""
+        # Template placeholders such as <One exact action> are not content; autolinks are.
+        body = re.sub(
+            r"^[ \t]*<(?![^>\n]*://)[^<>\n]*>[ \t]*$", "", body, flags=re.MULTILINE
+        )
+        require(re.search(r"\w", body), f"Handoff needs a nonempty '{heading}' section")
+    require(
+        re.search(r"^Main-SHA: (?:[0-9a-f]{40}|[0-9a-f]{64})$", handoff, re.MULTILINE),
+        "Handoff needs Main-SHA: <full commit SHA>",
+    )
+
+
 def close(repo, root, manifest, args):
     require(
         all(
@@ -252,33 +286,8 @@ def close(repo, root, manifest, args):
         f"Main-SHA: {final}" in handoff.splitlines(),
         "Handoff must name the final main SHA",
     )
-    require(
-        len(handoff.splitlines()) <= 50 and len(handoff.split()) <= 500,
-        "Handoff is too long",
-    )
+    validate_handoff(handoff)
     require(text(args.evidence), "Closure needs final verification evidence")
-    timestamp = re.search(
-        r"^Generated-UTC: ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)$",
-        handoff,
-        re.MULTILINE,
-    )
-    require(timestamp is not None, "Handoff needs Generated-UTC: YYYY-MM-DDTHH:MM:SSZ")
-    try:
-        datetime.strptime(timestamp[1], "%Y-%m-%dT%H:%M:%SZ")
-    except ValueError:
-        raise ValueError("Handoff Generated-UTC must be a valid UTC timestamp") from None
-    for heading in ("Round delta", "Open work", "Next action"):
-        section = re.search(
-            rf"^## {heading}[ \t]*\n(.*?)(?=^## |\Z)",
-            handoff,
-            re.MULTILINE | re.DOTALL,
-        )
-        body = re.sub(r"<!--.*?-->", "", section[1], flags=re.DOTALL) if section else ""
-        # Template placeholders such as <One exact action> are not content; autolinks are.
-        body = re.sub(
-            r"^[ \t]*<(?![^>\n]*://)[^<>\n]*>[ \t]*$", "", body, flags=re.MULTILINE
-        )
-        require(re.search(r"\w", body), f"Handoff needs a nonempty '{heading}' section")
     manifest.update(
         state="closed",
         final_main_sha=final,
@@ -292,6 +301,9 @@ def parser():
     command = argparse.ArgumentParser(description=__doc__)
     command.add_argument("--repo", type=Path, default=Path.cwd())
     actions = command.add_subparsers(dest="action", required=True)
+    actions.add_parser(
+        "check-handoff", help="Validate a handoff's shape without touching any round"
+    ).add_argument("handoff", type=Path)
     for name in ("init", "assign", "record", "resolve", "close", "status"):
         sub = actions.add_parser(name)
         sub.add_argument("round")
@@ -325,6 +337,10 @@ def parser():
 def main():
     args = parser().parse_args()
     try:
+        if args.action == "check-handoff":
+            validate_handoff(args.handoff.read_text())
+            print(f"{args.handoff}: valid handoff")
+            return 0
         repo = args.repo.resolve()
         require(
             Path(git(repo, "rev-parse", "--show-toplevel")).resolve() == repo,

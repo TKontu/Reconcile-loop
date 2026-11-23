@@ -23,8 +23,10 @@ Optional helpers, outside the phase sequence:
 
 - [Status](../../../.agent/commands/status.md): report backlog status and feasibility read-only.
 - [PR verdict](../../../.agent/commands/pr-verdict.md): run an advisory, head-bound review panel.
+- [Loop manager](../../../.agent/commands/loop-manager.md): watch the optional round supervisor.
 
 For an end-to-end request, follow these phases in order within the granted scope. Stop at unresolved
-approval or acceptance gates; continue independent authorized work when possible. This pack supplies
-local scaffolding, not an unattended agent launcher. Do not substitute its contributor contract for
+approval or acceptance gates; continue independent authorized work when possible. This skill supplies
+local scaffolding, not an unattended agent launcher; the optional supervisor
+(`.agent/supervisor.md`) is started only by the operator. Do not substitute its contributor contract for
 the adopting project's operating contract.
