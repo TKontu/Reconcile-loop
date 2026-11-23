@@ -6,7 +6,8 @@ Inspect actual merged/cancelled outcomes and final main. Run the configured veri
 additional combined-state gates owed by the assignment. Record failures and their owner; failed
 required gates keep the round open. Confirm no workers still hold mutable resources.
 
-Update only the canonical backlog/details: acceptance met → completed outcome; newly discovered work
+Update only the canonical backlog/details: acceptance met → completed outcome (for behavior, only with an observed run or artifact reference;
+merged but not yet exercised stays partial and names the run that will show it); newly discovered work
 → new item; negative measurement → evidence; target conflict → proposed decision awaiting approval.
 Cancelled work remains visible with its next owner. Do not change architecture to make a result fit.
 Record residuals and the actual behavior change, including none for documentation-only work.

@@ -10,7 +10,8 @@ API errors mean unknown status. A blocked result has no reviewable candidate; re
 reason and resolve the blocker or explicitly cancel the assignment.
 
 Compare behavior with the target and acceptance. Check concrete failure cases, scope, default changes,
-production connections, and resource/scale limits when relevant. Keep review proportional to risk;
+production connections (each new public symbol has its named caller or an explicit "unwired by
+design" item), and resource/scale limits when relevant. Keep review proportional to risk;
 multiple agent panels are optional ([pr-verdict](pr-verdict.md) describes one). Record findings with locations and evidence.
 
 Return ready, needs-fix or blocked, with a head-bound review reference. For repairs, send a bounded
