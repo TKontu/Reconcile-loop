@@ -4,10 +4,13 @@
 - Architecture sections / approved decisions: <references>
 - Objective: <one observable outcome>
 - In scope / non-goals: <boundaries>
+- Premises: <1–3 beliefs the objective rests on, each with the command or file:line that checks it>
 - Expected files and editable records: <ownership; name shared seams>
 - Resources / artifacts: <permitted services, exclusive ownership, provisioned data or none>
 - Acceptance: <observable behavior and expected results>
-- Connections / scale: <production callers, data boundaries and relevant limits, or N/A>
+- Connections / scale: <production caller of each new public symbol, producer/consumer of each data
+  shape (or "unwired by design" plus the item that wires it); bounds on memory, batch sizes and
+  transaction size for loops over full datasets; or N/A>
 - Publication authority and PR evidence: <scope, required reports and residuals>
 
 List only applicable gates (local, integration, live or final combined state). An unavailable required
