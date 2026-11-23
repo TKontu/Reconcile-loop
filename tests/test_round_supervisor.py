@@ -194,8 +194,14 @@ class StateTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             rs.parse_duration("soon")
 
+    def test_preflight_refuses_without_its_own_workspace(self):
+        sup = rs.Supervisor(CFG, (), FakeHerdr([]))
+        with mock.patch.dict(os.environ, {"HERDR_ENV": "1", "HERDR_WORKSPACE_ID": ""}):
+            with self.assertRaises(SystemExit):
+                sup.preflight(allow_other=False)
+
     def test_preflight_refuses_another_working_session(self):
-        env = {"HERDR_ENV": "1", "HERDR_PANE_ID": "me"}
+        env = {"HERDR_ENV": "1", "HERDR_PANE_ID": "me", "HERDR_WORKSPACE_ID": "w1"}
         other = {"agent": "claude", "cwd": str(rs.ROOT), "pane_id": "p1", "agent_status": "working"}
         sup = rs.Supervisor(CFG, (), FakeHerdr([other]))
         with mock.patch.dict(os.environ, env):
@@ -230,7 +236,7 @@ class StateTests(unittest.TestCase):
 
 class HerdrTests(unittest.TestCase):
     def test_ending_a_round_closes_only_its_own_tab(self):
-        herdr = FakeHerdr([{"name": "live-task1", "agent": "claude", "tab_id": "t11"}])
+        herdr = FakeHerdr([{"name": rs.LANE_PREFIX + "task1", "agent": "claude", "tab_id": "t11"}])
         sup = rs.Supervisor(CFG, (), herdr)
         sup.tab = "t99"
         with mock.patch.object(rs.time, "sleep", lambda _s: None):
@@ -259,12 +265,91 @@ class HerdrTests(unittest.TestCase):
         self.assertIn(f"ROUND_SUPERVISOR_ROOT={rs.ROOT}", calls[0])
 
 
+class RepoNameTests(unittest.TestCase):
+    """Herdr names are global, so two repos' loops must never share one."""
+
+    def test_names_carry_the_repo_slug(self):
+        names = rs.repo_names(Path("/work/My Repo.v2"), {})
+        self.assertEqual(names["slug"], "my-repo-v2")
+        self.assertEqual(names["agent"], "round-planner-my-repo-v2")
+        self.assertEqual(names["loop_tab"], "round-loop-my-repo-v2")
+        self.assertEqual(names["lane_prefix"], "live-my-repo-v2-")
+
+    def test_config_name_overrides_the_directory(self):
+        names = rs.repo_names(Path("/work/checkout"), {"supervisor": {"name": "Alpha"}})
+        self.assertEqual(names["agent"], "round-planner-alpha")
+
+    def test_two_repos_get_distinct_names(self):
+        a, b = (rs.repo_names(Path(f"/work/{n}"), {}) for n in ("alpha", "beta"))
+        self.assertTrue(all(a[k] != b[k] for k in ("agent", "loop_tab", "lane_prefix")))
+
+    def test_dashboard_lists_only_this_repos_lanes(self):
+        mine = {"name": rs.LANE_PREFIX + "task1", "agent_status": "working"}
+        other = {"name": "live-otherrepo-task1", "agent_status": "working"}
+        view = rs.gather_view(FakeHerdr([mine, other]))
+        self.assertEqual(view["lanes"], [(mine["name"], "working")])
+
+    def test_round_prompt_names_lanes_with_the_repo_prefix(self):
+        prompt = rs.ROUND_PROMPT.format(round=1, script="s", lane_prefix=rs.LANE_PREFIX)
+        self.assertIn(rs.LANE_PREFIX + "<lane>", prompt)
+
+    def test_never_adopts_another_checkouts_planner(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        state = Path(tmp.name)
+        (state / "current.json").write_text(
+            json.dumps({"round": 2, "session": "s", "tab": "t", "started": 1.0})
+        )
+        foreign = {"name": rs.AGENT, "cwd": "/somewhere/else"}
+        with mock.patch.object(rs, "STATE", state):
+            with self.assertRaises(SystemExit):
+                rs.Supervisor(CFG, (), FakeHerdr([foreign])).adopt()
+            own = {"name": rs.AGENT, "cwd": str(rs.ROOT)}
+            self.assertTrue(rs.Supervisor(CFG, (), FakeHerdr([own])).adopt())
+
+
+class WorkspaceTests(unittest.TestCase):
+    """Tabs land in the supervisor's own workspace, never whichever one is focused."""
+
+    def record(self):
+        calls = []
+
+        def run(cmd, _timeout):
+            calls.append(list(cmd))
+            return 0, json.dumps({"result": {
+                "tab": {"tab_id": "t"}, "root_pane": {"pane_id": "p"}, "pane": {"pane_id": "q"},
+            }})  # fmt: skip
+
+        return calls, run
+
+    def test_planner_tab_lands_in_the_supervisors_workspace(self):
+        calls, run = self.record()
+        with mock.patch.dict(os.environ, {"HERDR_WORKSPACE_ID": "w1D"}):
+            rs.Herdr(run).new_tab()
+        create = calls[0]
+        self.assertEqual(create[:3], ["herdr", "tab", "create"])
+        self.assertEqual(create[create.index("--workspace") + 1], "w1D")
+
+    def test_up_opens_the_loop_tab_in_the_supervisors_workspace(self):
+        calls, run = self.record()
+        with mock.patch.dict(os.environ, {"HERDR_WORKSPACE_ID": "w1D"}), mock.patch.object(
+            rs.time, "sleep", lambda _s: None
+        ):
+            rs.up([], rs.Herdr(run))
+        create = next(c for c in calls if c[1:3] == ["tab", "create"])
+        self.assertEqual(create[create.index("--workspace") + 1], "w1D")
+
+    def test_round_prompt_forbids_lane_workspaces(self):
+        prompt = rs.ROUND_PROMPT.format(round=1, script="s", lane_prefix=rs.LANE_PREFIX)
+        self.assertIn("never create a Herdr workspace", prompt)
+
+
 class DashboardTests(unittest.TestCase):
     @staticmethod
     def view(news):
         return {
             "now": T0, "phase": ("RUNNING", ""), "round": 3, "started": T0 - 600,
-            "deadline": None, "lanes": [("live-task1", "idle")], "news": news,
+            "deadline": None, "lanes": [(rs.LANE_PREFIX + "task1", "idle")], "news": news,
         }  # fmt: skip
 
     def test_render_fits_the_screen_keeps_status_and_scrolls_the_news(self):

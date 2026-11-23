@@ -8,7 +8,7 @@ A plain process (no LLM) in its own Herdr pane. Each round gets a new ``claude``
 supervisor-chosen session id, so "cleared" holds by construction. Completion is an explicit,
 validated sentinel, never Herdr's ``idle``: an orchestrator waiting on CI is idle too.
 
-Live lanes carry over untouched: they run in their own ``live-<lane>`` Herdr tabs, and the only tab
+Live lanes carry over untouched: they run in their own ``live-<repo>-<lane>`` Herdr tabs, and the only tab
 this process ever closes is the one it created for the round's orchestrator.
 
 Watchdog: transcript silence or no outward progress (main, PR heads, round manifests) earns a
@@ -45,8 +45,6 @@ from typing import Any
 
 ROOT = Path(os.environ.get("ROUND_SUPERVISOR_ROOT", Path(__file__).resolve().parents[1]))
 STATE = ROOT / ".agent-runs" / "supervisor"  # .agent-runs/ is already gitignored by bootstrap
-AGENT = "round-planner"
-TAB_LABEL = "round-planner"
 
 
 def project_config(root: Path = ROOT) -> dict[str, Any]:
@@ -57,7 +55,26 @@ def project_config(root: Path = ROOT) -> dict[str, Any]:
         return {}
 
 
+def repo_names(root: Path, config: dict[str, Any]) -> dict[str, str]:
+    """Herdr agent names are global across projects, so every name carries this repo's slug.
+
+    The slug is `[supervisor] name` from .agent/config.toml, else the checkout's directory name.
+    """
+    raw = str(config.get("supervisor", {}).get("name") or root.name)
+    slug = re.sub(r"[^a-z0-9]+", "-", raw.lower()).strip("-") or "repo"
+    return {
+        "slug": slug,
+        "agent": f"round-planner-{slug}",
+        "loop_tab": f"round-loop-{slug}",
+        "lane_prefix": f"live-{slug}-",
+    }
+
+
 CONFIG = project_config()
+NAMES = repo_names(ROOT, CONFIG)
+AGENT = NAMES["agent"]
+TAB_LABEL = NAMES["agent"]
+LANE_PREFIX = NAMES["lane_prefix"]
 BRANCH = CONFIG.get("project", {}).get("default_branch", "main")
 # Unattended sessions cannot answer approval dialogs; `auto` lets the round run. Set
 # [supervisor] permission_mode in .agent/config.toml to choose another mode.
@@ -79,7 +96,9 @@ decisions in HANDOFF.md.
 - Before planning new work, take over every finished lane HANDOFF.md names (check its Herdr
   agent, its result under .agent-runs/ and its PR; an idle agent is not a finished lane). Record
   it if it is not recorded yet. Lanes still running stay carried.
-- Live or long work runs only as Herdr lanes in their own live-<lane> tabs. Never wait for one to
+- Live or long work runs only as Herdr lanes, each agent and tab named {lane_prefix}<lane> (Herdr
+  names are global across projects, so always use this prefix). A lane is a tab in this round's
+  workspace (herdr tab create --workspace "$HERDR_WORKSPACE_ID"); never create a Herdr workspace. Never wait for one to
   finish: carry it in HANDOFF.md and end the round. Probe before starting; never duplicate.
   Never halt, relaunch or take over a carried lane; each continues across rounds until it completes.
 - HANDOFF.md must name every carried lane: its tab, owner, what it is doing, how to check it, and
@@ -267,6 +286,16 @@ def log(message: str) -> None:
         print(line, flush=True)
 
 
+def own_workspace() -> list[str]:
+    """`--workspace <id>` for the supervisor's own Herdr workspace.
+
+    Without it `tab create` uses whichever workspace is focused, so a planner could open in another
+    repo's workspace. preflight refuses to run without HERDR_WORKSPACE_ID.
+    """
+    workspace = os.environ.get("HERDR_WORKSPACE_ID", "")
+    return ["--workspace", workspace] if workspace else []
+
+
 class Herdr:
     def __init__(self, run: Run = _run) -> None:
         self.run = run
@@ -287,7 +316,7 @@ class Herdr:
 
     def new_tab(self) -> tuple[str, str]:
         made = self._json(
-            "tab", "create", "--cwd", str(ROOT), "--label", TAB_LABEL, "--no-focus",
+            "tab", "create", *own_workspace(), "--cwd", str(ROOT), "--label", TAB_LABEL, "--no-focus",
             "--env", f"ROUND_SUPERVISOR_ROOT={ROOT}",
         )  # fmt: skip
         return made["tab"]["tab_id"], made["root_pane"]["pane_id"]
@@ -363,6 +392,8 @@ class Supervisor:
     def preflight(self, *, allow_other: bool) -> None:
         if os.environ.get("HERDR_ENV") != "1":
             sys.exit("refusing: not inside a Herdr pane")
+        if not os.environ.get("HERDR_WORKSPACE_ID"):
+            sys.exit("refusing: HERDR_WORKSPACE_ID unset; planner tabs must open in this workspace")
         if (STATE / "HALT").exists():
             sys.exit(f"refusing: {STATE / 'HALT'} exists; see `status`, then `clear-halt`")
         others = [
@@ -396,7 +427,7 @@ class Supervisor:
         self.t = Tracker(**keep)
         time.sleep(2)  # the new tab's shell must reach its prompt
         self.herdr.start(pane, self.session, round_no, self.extra)
-        rc, out = self.herdr.prompt(self.prompt.format(round=round_no, script=SELF))
+        rc, out = self.herdr.prompt(self.prompt.format(round=round_no, script=SELF, lane_prefix=LANE_PREFIX))
         if rc:
             raise RuntimeError(f"round prompt refused: {out[:300]}")
         news("round", f"Round {round_no} started")
@@ -405,8 +436,11 @@ class Supervisor:
     def adopt(self) -> bool:
         """A restarted supervisor resumes the live round instead of duplicating it."""
         cur = _load(STATE / "current.json")
-        if not cur or self.herdr.agent() is None:
+        agent = self.herdr.agent()
+        if not cur or agent is None:
             return False
+        if agent.get("cwd") not in (None, str(ROOT)):
+            sys.exit(f"refusing: agent {AGENT} belongs to {agent.get('cwd')}; set [supervisor] name")
         self.session, self.tab = cur["session"], cur["tab"]
         now = time.time()
         self.t = Tracker(round=cur["round"], started=cur["started"], last_progress=now,
@@ -461,7 +495,7 @@ class Supervisor:
         _dump(STATE / "HALT", {"reason": reason, "round": self.t.round, "at": time.time()})
         log(f"HALT: {reason}")
         news("halt", reason)
-        self.herdr.notify("Round loop halted", reason[:200])
+        self.herdr.notify(f"Round loop {NAMES['slug']} halted", reason[:200])
 
     def step(self) -> bool:
         """One poll; False ends the supervisor."""
@@ -480,7 +514,7 @@ class Supervisor:
             news("watchdog", f"Nudged the planner: {action.kind.removeprefix('nudge_')}")
             self.t.last_nudge = now
         elif action.kind == "deny":
-            self.herdr.notify("Round loop: dialog timed out", f"round {self.t.round}")
+            self.herdr.notify(f"Round loop {NAMES['slug']}: dialog timed out", f"round {self.t.round}")
             news("watchdog", "An unanswered approval dialog was refused")
             self.herdr.keys("esc")
             time.sleep(2)
@@ -677,7 +711,7 @@ def gather_view(herdr: Herdr) -> dict[str, Any]:
         lanes = [
             (a["name"], a.get("agent_status", "?"))
             for a in herdr.agents()
-            if str(a.get("name", "")).startswith("live-")
+            if str(a.get("name", "")).startswith(LANE_PREFIX)
         ]
     except (RuntimeError, ValueError):
         lanes = []
@@ -732,7 +766,8 @@ def up(run_args: Sequence[str], herdr: Herdr | None = None) -> int:
     herdr = herdr or Herdr()
     me = f"python3 {SELF}"
     made = herdr._json(
-        "tab", "create", "--cwd", str(ROOT), "--label", "round-loop", "--no-focus",
+        "tab", "create", *own_workspace(), "--cwd", str(ROOT), "--label", NAMES["loop_tab"],
+        "--no-focus",
         "--env", f"ROUND_SUPERVISOR_ROOT={ROOT}",
     )  # fmt: skip
     top = made["root_pane"]["pane_id"]
@@ -774,6 +809,7 @@ def complete(outcome: str, reason: str, run: Run = _run) -> int:
 
 
 def status() -> int:
+    print("names:", NAMES)
     print("current:", _load(STATE / "current.json"))
     print("complete:", _load(STATE / "complete.json"))
     print("halt:", _load(STATE / "HALT"))
@@ -789,10 +825,12 @@ def dry_run(cfg: Config) -> int:
     print(f"claude args={PERMISSION_ARGS}")
     agents = Herdr().agents()
     print("named agents:", [a.get("name") for a in agents if a.get("name")])
-    print(f"name {AGENT} in use:", any(a.get("name") == AGENT for a in agents))
+    holder = next((a for a in agents if a.get("name") == AGENT), None)
+    print(f"names={NAMES}")
+    print(f"name {AGENT} in use:", holder is not None, f"(cwd {holder.get('cwd')})" if holder else "")
     print("HALT present:", (STATE / "HALT").exists())
     print("fingerprint ok:", fingerprint() is not None)
-    print("first prompt:\n" + ROUND_PROMPT.format(round=1, script=SELF))
+    print("first prompt:\n" + ROUND_PROMPT.format(round=1, script=SELF, lane_prefix=LANE_PREFIX))
     return 0
 
 

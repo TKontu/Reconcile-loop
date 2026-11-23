@@ -42,7 +42,8 @@ At handoff, rewrite `.agent-runs/loop-manager/HANDOFF.md` with the same four top
 1. Record the ruling where a fresh planner will read it: the project's decision record (the
    `decisions` path in `.agent/config.toml`) through a small PR, or the next HANDOFF.md. Agent
    memory counts only for planners that load it.
-2. If `round-planner` is live, send it with `herdr agent prompt round-planner "..."`, without
+2. If this repo's planner is live (its name is `round-planner-<repo>`; `round_supervisor.py status`
+   prints it), send it with `herdr agent prompt <that name> "..."`, without
    `--wait`: name the record, say not to interrupt the round, and to reconcile it. Sending confirms
    delivery only.
 3. Until the ruling is on the default branch, report it as queued, not recorded.
