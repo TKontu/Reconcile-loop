@@ -4,10 +4,13 @@ This repository maintains the lean workflow, phase instructions, templates and l
 Read README.md and SPEC.md. Keep one maintained version; expanded features remain in the archived
 `docs/standalone-patterns` branch until a demonstrated need justifies adding them here.
 
-- `.agent/commands/` owns phase procedures and optional helpers (`status`, `pr-verdict`); runner
+- `.agent/commands/` owns phase procedures and optional helpers (`status`, `pr-verdict`,
+  `loop-manager`); runner
   wrappers and `.claude/agents/` subagents point there or stay runner-specific. Avoid duplicate policy.
 - Preserve the protocol's isolation, evidence and reconciliation guarantees. Keep project-specific
-  rules, generic development helpers and unattended supervision out of the lean core.
+  rules and generic development helpers out of the lean core. Unattended supervision lives only in
+  the optional `scripts/round_supervisor.py` and `.agent/supervisor.md`; no phase, template or
+  `round.py` behavior may depend on it.
 - For CLI behavior changes demonstrate a failing test first, implement the smallest fix, then run
   `python3 -m unittest discover -s tests`. Run `git diff --check` and inspect links before publishing.
 - Review staged changes for secrets and private source material. Preserve unrelated work; never

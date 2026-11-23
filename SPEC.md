@@ -45,6 +45,8 @@ Use `python3 scripts/round.py` from the coordinator checkout, or supply `--repo 
 the subcommand. `init`, `assign`, `record`, `resolve`, `close` and `status` are explained in the
 [worked example](examples/one-round.md) and individual [phase procedures](.agent/commands/plan-round.md).
 Initialization requires a clean checkout and ignored runtime directory.
+`check-handoff PATH` applies close's handoff shape checks (timestamp, full Main-SHA, nonempty
+sections, size) without touching any round; it does not check that Main-SHA is the final main.
 The CLI creates a self-contained packet and binds its exact UTF-8 bytes with one SHA-256. The packet
 contains the round, assignment, base and branch; results repeat the packet digest and base. It checks
 those identities on import and retains each submitted result separately. Checks describe the candidate
@@ -84,7 +86,8 @@ evidence truth, required-gate completeness, resource release, or whether the ref
 
 `init` refuses another round while any local round remains open. Cancelling work does not waive
 reconciliation. A new round requires closure; an interrupted planner session may end while its round
-remains open. No automated supervisor is required; a human or agent can drive each phase.
+remains open. No automated supervisor is required; a human or agent can drive each phase. The optional
+supervisor (`.agent/supervisor.md`) only starts fresh sessions and enforces these same checks.
 
 ## Recovery and limits
 

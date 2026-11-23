@@ -137,6 +137,16 @@ class RoundTests(unittest.TestCase):
                 self.assertIn(diagnostic, rejected.stderr)
                 self.assertEqual(self.manifest()["state"], "open")
 
+    def test_check_handoff_validates_shape_without_a_round(self):
+        path = self.repo / "HANDOFF.md"
+        path.write_text(self.handoff())
+        self.cli("check-handoff", str(path))
+        self.assertFalse((self.repo / ".agent-runs/R1").exists())
+        template = Path(__file__).resolve().parents[1] / "templates/handoff.md"
+        self.assertIn("Generated-UTC", self.cli("check-handoff", str(template), ok=False).stderr)
+        path.write_text(self.handoff(sha="abc"))
+        self.assertIn("Main-SHA", self.cli("check-handoff", str(path), ok=False).stderr)
+
     def test_close_rejects_unfilled_handoff_template_sections(self):
         self.start()
         self.cli(

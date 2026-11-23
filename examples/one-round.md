@@ -60,7 +60,8 @@ containing the evidence. The CLI does not fetch the URL; the reviewer verifies i
 A new round is refused until this succeeds. Stop the planner session. A fresh planner must recover
 the outcome, remaining runtime work and next permitted action from the repository/PRs alone.
 
-This is enough for a human or agent to drive the loop; there is no supervisor process to install.
+This is enough for a human or agent to drive the loop; no supervisor process is needed. To run
+rounds unattended, see the optional [round supervisor](../.agent/supervisor.md).
 
 ## Interrupted round with CI unavailable
 

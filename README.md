@@ -58,12 +58,22 @@ and [pr-verdict](.agent/commands/pr-verdict.md) gives an advisory review of one 
 gets three subagents (review-lens, ci-watcher, quick-fixer). Their Codex skills read the same files
 under `.claude/agents/`, so copy that folder for Codex too.
 
+## Run rounds unattended (optional)
+
+[`scripts/round_supervisor.py`](.agent/supervisor.md) drives the same steps without you: from a
+Herdr pane it starts a fresh Claude Code session per round, waits for a validated handoff, then
+starts the next. A watchdog nudges, replaces or halts a stuck round and never approves a dialog.
+`python3 scripts/round_supervisor.py up --for 8h` opens the loop and a dashboard;
+`/loop-manager` (`$loop-manager` in Codex) watches it from another session. Nothing else depends on
+it; leave it out to keep driving rounds by hand.
+
 ## Reference
 
 - [SPEC.md](SPEC.md): the full rules.
 - [.agent/commands/](.agent/commands/bootstrap.md): instructions for each step.
 - [templates/](templates/assignment.md): assignment, result, task and handoff templates.
 - `python3 scripts/round.py --help`: the round script.
+- [.agent/supervisor.md](.agent/supervisor.md): the optional unattended loop.
 
 ## Contributing
 
