@@ -289,8 +289,28 @@ class RepoNameTests(unittest.TestCase):
         view = rs.gather_view(FakeHerdr([mine, other]))
         self.assertEqual(view["lanes"], [(mine["name"], "working")])
 
+    def test_dashboard_prefers_lane_records_over_agent_state(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        lane = Path(tmp.name) / ".agent-runs" / "lanes" / "sweep"
+        lane.mkdir(parents=True)
+        (lane / "runner.rc").write_text("0\n")
+        record = {"lane": "sweep", "label": rs.LANE_PREFIX + "sweep", "rc_file": str(lane / "runner.rc")}
+        (lane / "lane.json").write_text(json.dumps(record))
+        idle = {"name": rs.LANE_PREFIX + "sweep", "agent_status": "idle"}
+        with mock.patch.object(rs, "ROOT", Path(tmp.name)):
+            view = rs.gather_view(FakeHerdr([idle]))
+        self.assertEqual(view["lanes"], [(rs.LANE_PREFIX + "sweep", "done")])
+        self.assertEqual(view["lanes_kind"], "(lane state)")
+
+    def test_round_prompt_starts_probes_and_releases_lanes_with_the_helper(self):
+        prompt = rs.ROUND_PROMPT.format(round=1, script="s", lane_prefix=rs.LANE_PREFIX, lanes="L")
+        for step in ("L status", "L start <lane>", "L recorded <lane>", "L cleanup --go"):
+            self.assertIn(step, prompt)
+        self.assertTrue(rs.LANES.is_file())
+
     def test_round_prompt_names_lanes_with_the_repo_prefix(self):
-        prompt = rs.ROUND_PROMPT.format(round=1, script="s", lane_prefix=rs.LANE_PREFIX)
+        prompt = rs.ROUND_PROMPT.format(round=1, script="s", lane_prefix=rs.LANE_PREFIX, lanes="l")
         self.assertIn(rs.LANE_PREFIX + "<lane>", prompt)
 
     def test_never_adopts_another_checkouts_planner(self):
@@ -340,7 +360,7 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(create[create.index("--workspace") + 1], "w1D")
 
     def test_round_prompt_forbids_lane_workspaces(self):
-        prompt = rs.ROUND_PROMPT.format(round=1, script="s", lane_prefix=rs.LANE_PREFIX)
+        prompt = rs.ROUND_PROMPT.format(round=1, script="s", lane_prefix=rs.LANE_PREFIX, lanes="l")
         self.assertIn("never create a Herdr workspace", prompt)
 
 

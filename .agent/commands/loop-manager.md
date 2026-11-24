@@ -11,6 +11,7 @@ to it. It is read-only towards round work.
 
    ```sh
    python3 scripts/round_supervisor.py status
+   python3 scripts/lanes.py status
    tail -20 .agent-runs/supervisor/news.jsonl
    tail -5 .agent-runs/supervisor/supervisor.log
    herdr agent list
