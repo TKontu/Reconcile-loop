@@ -28,6 +28,32 @@ The round carries such a lane in `HANDOFF.md` instead of waiting, and the next t
 there and in `.agent-runs/`. Anything long must be a Herdr lane, because the orchestrator's own
 subagents and background commands end with its session.
 
+`scripts/lanes.py` gives lanes a lifecycle the round prompt follows. It needs no LLM, and the
+supervisor only reads its records for the dashboard.
+
+```sh
+L=scripts/lanes.py
+python3 $L start sweep --cwd ../proj-lanes/sweep --cmd run_sweep.sh   # or --agent claude|codex
+python3 $L status            # running, done, recorded, blocked, dead (with its resume command), unknown
+python3 $L recorded sweep --note "round 12, PR #40"
+python3 $L cleanup           # dry run; --go acts
+```
+
+- `start` opens the tab in `$HERDR_WORKSPACE_ID` and refuses a name already in Herdr or a lane
+  that is still running. A `--cmd` lane runs under a wrapper that writes `runner.pid`,
+  `runner.log` and `runner.rc` (exit code and time) under `.agent-runs/lanes/<lane>/`, next to the
+  `lane.json` record. Outside Herdr a `--cmd` lane is detached with `setsid -f nohup`.
+- `status` never reads Herdr's `idle` as finished: an idle agent lane stays `running` until its
+  result and PR are checked and it is marked `recorded`. A recycled pid reads as gone.
+- `cleanup --go` runs after `/merge-round` and before `/handoff`. It closes a lane tab only when
+  every pane in it is settled, the lane is not carried in `HANDOFF.md`, its record (if any) is
+  `done` or `recorded`, and its worktree is finished or gone. A tab carried by name protects its
+  worktree as well. It then removes, with plain `git worktree remove`, each lane worktree (a
+  sibling `<repo>-...` path or a recorded lane cwd) whose newest PR is merged or closed and none is
+  open. It holds and reports anything carried, dirty, unpushed, busy, without a PR or still live.
+  Protected tabs (planner, loop, supervisor, manager, review server), other repos' tabs and tabs
+  outside the lane paths are never closed. The round carries every held lane with its reason.
+
 ## The no-endless-wait bound
 
 | Trigger | Default | Response |
@@ -88,6 +114,8 @@ To watch the loop from a separate session, use the [loop-manager](commands/loop-
 
 Check each step before the next: `--dry-run` finds the transcript directory and a working
 fingerprint; one `up` round reaches `complete` only after a valid handoff; turnover closes only the
-planner tab and leaves a dummy `live-<repo>-*` lane alone; the next round's takeoff lists that lane; a
+planner tab and leaves a dummy `live-<repo>-*` lane alone; the next round's takeoff lists that lane
+and `lanes.py status` reports it; `lanes.py cleanup` holds it while carried and releases it once
+finished; a
 killed and restarted supervisor adopts the round; then two real rounds and `stop-after-round`.
 A stop leaves `HALT`; run `clear-halt` before the next `up`.

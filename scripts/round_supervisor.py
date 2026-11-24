@@ -25,6 +25,7 @@ import argparse
 import contextlib
 import dataclasses
 import fcntl
+import importlib.util
 import json
 import os
 import re
@@ -84,6 +85,7 @@ PERMISSION_ARGS = (
 PROJECT_LOGS = Path.home() / ".claude" / "projects" / re.sub(r"[/.]", "-", str(ROOT))
 LIMIT_RE = re.compile(r"usage limit|limit reached|out of (extra )?usage|rate.limited", re.I)
 SELF = Path(__file__).resolve()
+LANES = SELF.with_name("lanes.py")
 
 ROUND_PROMPT = """You are the orchestrator of supervised round {round}, in a fresh session.
 Run /takeoff (.agent/commands/takeoff.md) for orientation, then (overriding its "stop") run exactly
@@ -93,14 +95,19 @@ python3 scripts/round.py throughout. Decide routine choices as recommended; reco
 decisions in HANDOFF.md.
 - Merge only within the merge authority in .agent/config.toml. If that authority is not yours,
   park approved PRs in HANDOFF.md as owed to the operator and open a dashboard item for them.
-- Before planning new work, take over every finished lane HANDOFF.md names (check its Herdr
-  agent, its result under .agent-runs/ and its PR; an idle agent is not a finished lane). Record
-  it if it is not recorded yet. Lanes still running stay carried.
-- Live or long work runs only as Herdr lanes, each agent and tab named {lane_prefix}<lane> (Herdr
-  names are global across projects, so always use this prefix). A lane is a tab in this round's
-  workspace (herdr tab create --workspace "$HERDR_WORKSPACE_ID"); never create a Herdr workspace. Never wait for one to
-  finish: carry it in HANDOFF.md and end the round. Probe before starting; never duplicate.
-  Never halt, relaunch or take over a carried lane; each continues across rounds until it completes.
+- Before planning new work, run python3 {lanes} status and take over every finished lane it or
+  HANDOFF.md names: done (write-up owed), blocked or dead (check its result and its PR; an idle
+  agent is not a finished lane). Record it if it is not recorded yet, then mark it with
+  python3 {lanes} recorded <lane> --note "<round, PR>". Lanes still running stay carried.
+- Live or long work runs only as Herdr lanes, started with
+  python3 {lanes} start <lane> --cwd <lane worktree> (--cmd <script> | --agent <kind>), which
+  names the agent and tab {lane_prefix}<lane> in this workspace, refuses duplicates and records
+  pid, log and exit code; never create a Herdr workspace. Never wait for a lane to finish: carry
+  it in HANDOFF.md and end the round. Never halt, relaunch or take over a carried lane; each continues
+  across rounds until it completes. A dead lane is resumed with the command status prints.
+- After /merge-round and again before /handoff run python3 {lanes} cleanup --go. It closes
+  finished lanes' tabs and removes their worktrees by rule; carry every lane it holds, with its
+  reason, in HANDOFF.md. Never close lane tabs or remove lane worktrees by hand.
 - HANDOFF.md must name every carried lane: its tab, owner, what it is doing, how to check it, and
   that it carries over and must not be halted or duplicated.
 - While waiting on CI or subagents, keep a background wake-up armed so the session resumes.
@@ -427,7 +434,8 @@ class Supervisor:
         self.t = Tracker(**keep)
         time.sleep(2)  # the new tab's shell must reach its prompt
         self.herdr.start(pane, self.session, round_no, self.extra)
-        rc, out = self.herdr.prompt(self.prompt.format(round=round_no, script=SELF, lane_prefix=LANE_PREFIX))
+        text = self.prompt.format(round=round_no, script=SELF, lane_prefix=LANE_PREFIX, lanes=LANES)
+        rc, out = self.herdr.prompt(text)
         if rc:
             raise RuntimeError(f"round prompt refused: {out[:300]}")
         news("round", f"Round {round_no} started")
@@ -687,7 +695,7 @@ def render(view: dict[str, Any], width: int, rows: int, offset: int) -> list[str
         _paint("none", "2")
     ]
     lanes = "   ".join(f"{name} {state}" for name, state in view["lanes"]) or "none"
-    top += [rule, _paint("LANES ", "1") + _paint("(agent state, not lane state)", "2")]
+    top += [rule, _paint("LANES ", "1") + _paint(view.get("lanes_kind", "(agent state, not lane state)"), "2")]
     top += textwrap.wrap(lanes, width) or []
     top += [rule, _paint("NEWS ", "1") + _paint("newest first", "2")]
     feed = [
@@ -705,16 +713,34 @@ def render(view: dict[str, Any], width: int, rows: int, offset: int) -> list[str
     return [*top, *shown, *[""] * (room - len(shown)), _paint(keys, "2")]
 
 
-def gather_view(herdr: Herdr) -> dict[str, Any]:
-    cur = _load(STATE / "current.json") or {}
+def lane_states(herdr: Herdr) -> tuple[list[tuple[str, str]], str]:
+    """Lane state from scripts/lanes.py records when present, else each lane agent's Herdr state."""
     try:
-        lanes = [
+        spec = importlib.util.spec_from_file_location("lanes", LANES)
+        if spec is None or spec.loader is None:
+            raise ImportError(LANES)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules.setdefault("lanes", mod)
+        spec.loader.exec_module(mod)
+        rows = mod.status_rows(ROOT)
+    except Exception:  # noqa: BLE001 - the dashboard must never die on an optional helper
+        rows = []
+    if rows:
+        return [(str(r["label"]), str(r["state"])) for r in rows], "(lane state)"
+    try:
+        agents = [
             (a["name"], a.get("agent_status", "?"))
             for a in herdr.agents()
             if str(a.get("name", "")).startswith(LANE_PREFIX)
         ]
     except (RuntimeError, ValueError):
-        lanes = []
+        agents = []
+    return agents, "(agent state, not lane state)"
+
+
+def gather_view(herdr: Herdr) -> dict[str, Any]:
+    cur = _load(STATE / "current.json") or {}
+    lanes, lanes_kind = lane_states(herdr)
     halt = _load(STATE / "HALT")
     return {
         "now": time.time(),
@@ -723,6 +749,7 @@ def gather_view(herdr: Herdr) -> dict[str, Any]:
         "started": cur.get("started"),
         "deadline": (_load(STATE / "deadline.json") or {}).get("at"),
         "lanes": lanes,
+        "lanes_kind": lanes_kind,
         "news": read_news(),
     }
 
@@ -830,7 +857,8 @@ def dry_run(cfg: Config) -> int:
     print(f"name {AGENT} in use:", holder is not None, f"(cwd {holder.get('cwd')})" if holder else "")
     print("HALT present:", (STATE / "HALT").exists())
     print("fingerprint ok:", fingerprint() is not None)
-    print("first prompt:\n" + ROUND_PROMPT.format(round=1, script=SELF, lane_prefix=LANE_PREFIX))
+    first = ROUND_PROMPT.format(round=1, script=SELF, lane_prefix=LANE_PREFIX, lanes=LANES)
+    print("first prompt:\n" + first)
     return 0
 
 

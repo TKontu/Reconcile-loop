@@ -64,8 +64,10 @@ under `.claude/agents/`, so copy that folder for Codex too.
 Herdr pane it starts a fresh Claude Code session per round, waits for a validated handoff, then
 starts the next. A watchdog nudges, replaces or halts a stuck round and never approves a dialog.
 `python3 scripts/round_supervisor.py up --for 8h` opens the loop and a dashboard;
-`/loop-manager` (`$loop-manager` in Codex) watches it from another session. Nothing else depends on
-it; leave it out to keep driving rounds by hand.
+`/loop-manager` (`$loop-manager` in Codex) watches it from another session.
+[`scripts/lanes.py`](.agent/supervisor.md#live-work) starts long work in lanes that outlive a
+round, reports which have finished or died, and releases finished lanes' tabs and worktrees by rule.
+Nothing else depends on either; leave them out to keep driving rounds by hand.
 
 ## Reference
 

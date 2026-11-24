@@ -9,8 +9,8 @@ Read README.md and SPEC.md. Keep one maintained version; expanded features remai
   wrappers and `.claude/agents/` subagents point there or stay runner-specific. Avoid duplicate policy.
 - Preserve the protocol's isolation, evidence and reconciliation guarantees. Keep project-specific
   rules and generic development helpers out of the lean core. Unattended supervision lives only in
-  the optional `scripts/round_supervisor.py` and `.agent/supervisor.md`; no phase, template or
-  `round.py` behavior may depend on it.
+  the optional `scripts/round_supervisor.py`, `scripts/lanes.py` and `.agent/supervisor.md`; no
+  phase, template or `round.py` behavior may depend on them.
 - For CLI behavior changes demonstrate a failing test first, implement the smallest fix, then run
   `python3 -m unittest discover -s tests`. Run `git diff --check` and inspect links before publishing.
 - Review staged changes for secrets and private source material. Preserve unrelated work; never
