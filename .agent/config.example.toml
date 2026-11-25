@@ -15,6 +15,12 @@ environment = "offline; no mutable services"
 merge_authority = "designated reviewer/operator; executor never self-merges"
 # Point to existing policy/runbooks when this short description is insufficient.
 
+# Optional: only read by scripts/merge_guard.py, a merge path for delegated merge authority.
+# [merge_guard]
+# method = "squash"                       # merge (default), squash or rebase
+# operator_paths = ["docs/decisions/*"]   # default: [project] architecture and decisions
+#                                         # .agent/config.toml, .claude/* and the guard: always
+
 # Optional: only read by scripts/round_supervisor.py (see .agent/supervisor.md).
 # [supervisor]
 # name = "my-repo"          # Herdr name slug; defaults to the checkout's directory name
