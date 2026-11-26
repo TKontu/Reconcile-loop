@@ -64,7 +64,22 @@ python3 $L cleanup           # dry run; --go acts
 | Usage limit on screen | up to 6 h | Wait, no nudge spent |
 | 3 nudges with no outward progress | | Recycle: new session; takeoff rebuilds from Git |
 | Round older than | 12 h | Recycle |
-| 2 consecutive recycles, or the default branch unchanged over 3 rounds | | HALT and notify |
+| 2 consecutive recycles, or the default branch unchanged over 3 rounds | | Diagnosing round (below) |
+| A planner's `complete --outcome halt` | | Diagnosing round (below) |
+| A planner's `complete --outcome wait --cause C [--until T]` | up to 12 h | Wait until T, then diagnose again |
+| The same cause unresolved twice in a row | | HALT and notify, naming the cause |
+| Operator `stop` or `stop-after-round` | | HALT |
+
+**Diagnosing rounds.** A loop that makes no progress is fixed by reconciliation, not by retry or a
+bare halt. When the breaker trips or a planner asks to halt, the next round's prompt starts with a
+diagnosing preamble: reconcile the failed or empty rounds; classify the cause with evidence
+(`executor-limit`, `backlog-exhausted`, `blocked-on-operator`, `tool-broken`, `lanes-failing` or
+`other`); act on it (switch harness, re-rank or split items, repair a tool, turn a block into a
+precise owed item); then plan whatever that unlocks. Only when an external event alone can unblock
+every lane does the round end with `wait`, naming the cause and, if known, when it clears (ISO
+time; capped at `wait_max_s`). The stop controls are obeyed during a wait. An advance of the
+default branch resets the cause count. The diagnosing state is held in memory, so a supervisor
+restarted mid-diagnosis forgets the previous cause.
 
 Only outward progress refunds nudges, so a session that merely keeps its transcript busy cannot
 extend a round forever. `run --set KEY=SECONDS` shortens any timer for a trial.
@@ -74,7 +89,12 @@ extend a round forever. `run --set KEY=SECONDS` shortens any timer for a trial.
 The supervisor reads `.agent/config.toml`: `[project] default_branch` (default `main`) and an
 optional `[supervisor] permission_mode` (default `auto`). Unattended sessions cannot answer
 approval dialogs, so the mode must let a round run; the watchdog refuses any dialog left open.
-Merges still follow `[policy] merge_authority`: when it is not the planner's, approved PRs are
+Optional `[supervisor] lane_harnesses` lists executor harnesses in order of preference, with
+launch templates in `[supervisor.harness_commands]` (see `.agent/config.example.toml`). When it is
+set, the round prompt tells the planner to start each lane with the first available harness, to
+move to the next when one hits a usage limit or is refused (never to wait or halt over it), to
+record the harness per lane in `HANDOFF.md`, and to open lane tabs with `--cwd <lane worktree>`.
+Without the key the prompt is unchanged. Merges still follow `[policy] merge_authority`: when it is not the planner's, approved PRs are
 parked in `HANDOFF.md` and on the dashboard as owed to the operator. `--claude-arg` adds flags to
 every session.
 
@@ -85,6 +105,33 @@ need distinct `[supervisor] name` values; `run --dry-run` and `status` print the
 supervisor refuses to adopt a planner agent whose working directory is another checkout. Tabs are
 created with `--workspace "$HERDR_WORKSPACE_ID"` (the supervisor's own workspace), never the
 focused one, and `run` refuses without that variable. `ROUND_SUPERVISOR_ROOT` points the supervisor at another checkout.
+
+## Running unattended
+
+The watchdog never approves a dialog, so every action a round needs must already be allowed.
+Check each item before a long `up`:
+
+1. **Merge delegation.** Either keep merges with the operator (approved PRs are parked as owed),
+   or delegate them: set `[policy] merge_authority` as in the commented example in
+   `.agent/config.example.toml`, so the planner merges only through `scripts/merge_guard.py`, and
+   deny raw `gh pr merge` in your agent settings. The guard leaves operator-owned paths to you;
+   keep those to the permission rules, the guard itself and any gate or verdict records your
+   project keeps (`[merge_guard] operator_paths`).
+2. **Allow rules.** Add the commands rounds and lanes run to your local agent settings yourself;
+   [`templates/settings.local.example.json`](../templates/settings.local.example.json) is an
+   example to merge into `.claude/settings.local.json`. Agents cannot add permission rules for
+   themselves, and must not be asked to. `herdr pane run:*` is broad: it types any command into
+   any pane, so allow it only where that is acceptable, or narrow it.
+3. **Harnesses.** List the executor harnesses you have in `[supervisor] lane_harnesses`, each
+   with a non-interactive launch template, so a usage limit on one moves lanes to the next.
+   Codex's `-s workspace-write` sandbox needs unprivileged user namespaces (bwrap) and fails on
+   hosts that block them; there use its approval-free mode (`--approve-for-me` in the example)
+   inside the lane worktree instead.
+4. **Lane release.** Rounds run `scripts/lanes.py cleanup --go`; it closes a finished lane's idle
+   tabs before removing its worktree, so the tab's shell does not pin the tree, and holds tabs
+   outside a registered lane worktree. Nothing else to configure.
+5. **Stop controls.** Use `up --for <duration>` or `stop-after-round`; a halt names its cause in
+   `HALT` and on the dashboard.
 
 ## Operating it
 
