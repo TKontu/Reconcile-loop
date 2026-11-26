@@ -59,13 +59,20 @@ class PolicyTests(unittest.TestCase):
         late = obs(60 + CFG.settle_s, sentinel=done, status="working")
         self.assertEqual(rs.decide(CFG, t, late).kind, "next")
 
-    def test_requested_halts_win_over_the_next_round(self):
-        halt = obs(1, sentinel={"outcome": "halt"})
-        self.assertEqual(rs.decide(CFG, tracker(), halt).kind, "halt")
+    def test_a_planner_halt_asks_for_diagnosis_but_operator_stops_still_halt(self):
+        asked = rs.decide(CFG, tracker(), obs(1, sentinel={"outcome": "halt", "reason": "r"}))
+        self.assertEqual(asked.kind, "halt_requested")
         after = obs(1, sentinel={"outcome": "continue"}, stop_after_round=True)
         self.assertEqual(rs.decide(CFG, tracker(), after).kind, "halt")
         self.assertEqual(rs.decide(CFG, tracker(), obs(1, stop_now=True)).kind, "halt")
         self.assertEqual(rs.decide(CFG, tracker(), obs(1, stop_after_round=True)).kind, "wait")
+
+    def test_a_wait_outcome_carries_its_cause_and_time(self):
+        s = {"outcome": "wait", "cause": "executor-limit", "until": T0 + 600, "reason": "limit"}
+        action = rs.decide(CFG, tracker(), obs(1, sentinel=s))
+        self.assertEqual(
+            (action.kind, action.cause, action.until), ("wait_requested", "executor-limit", T0 + 600)
+        )
 
     def test_silence_nudges_after_the_threshold_only(self):
         quiet = obs(CFG.silence_s - 1, activity=T0)
@@ -107,18 +114,90 @@ class PolicyTests(unittest.TestCase):
         late = obs(CFG.silence_s + CFG.limit_max_s, activity=T0, limited=True)
         self.assertNotEqual(rs.decide(CFG, t, late).reason, "usage limit")
 
-    def test_breaker_halts_on_repeated_recycles_and_on_a_frozen_main(self):
+    def test_breaker_asks_for_a_diagnosing_round_not_a_halt(self):
         t = tracker(main_at_start="a")
         self.assertIsNone(rs.after_round(CFG, t, recycled=True, main_sha="b"))
-        stop = rs.after_round(CFG, t, recycled=True, main_sha="c")
-        self.assertEqual(stop.kind, "halt")
+        self.assertEqual(rs.after_round(CFG, t, recycled=True, main_sha="c").kind, "diagnose")
         t = tracker(main_at_start="a")
         self.assertIsNone(rs.after_round(CFG, t, recycled=False, main_sha="a"))
         self.assertIsNone(rs.after_round(CFG, t, recycled=False, main_sha="a"))
-        self.assertIsNotNone(rs.after_round(CFG, t, recycled=False, main_sha="a"))
-        t = tracker(main_at_start="a", recycles=1, no_advance=2)
+        frozen = rs.after_round(CFG, t, recycled=False, main_sha="a")
+        self.assertEqual(frozen.kind, "diagnose")
+        self.assertIn("unchanged", frozen.reason)
+        t = tracker(main_at_start="a", recycles=1, no_advance=2, last_cause="x", repeats=1)
         self.assertIsNone(rs.after_round(CFG, t, recycled=False, main_sha="b"))
-        self.assertEqual((t.recycles, t.no_advance), (0, 0))
+        self.assertEqual((t.recycles, t.no_advance, t.last_cause, t.repeats), (0, 0, "", 0))
+
+    def test_between_rounds_routes_to_diagnosis_wait_or_a_real_halt(self):
+        nxt = rs.Action("next")
+        breaker = rs.Action("diagnose", "main unchanged across 3 rounds")
+        t = tracker()
+        self.assertEqual(rs.between_rounds(CFG, t, nxt, None).kind, "next")
+        self.assertEqual(rs.between_rounds(CFG, t, nxt, breaker).kind, "diagnose")
+        self.assertTrue(t.diagnosing)
+        t = tracker()
+        asked = rs.Action("halt_requested", "x", cause="tool-broken")
+        self.assertEqual(rs.between_rounds(CFG, t, asked, None).kind, "diagnose")
+        # a diagnosing round that acted resumes normal rounds
+        t = tracker(diagnosing=True)
+        self.assertEqual(rs.between_rounds(CFG, t, nxt, None).kind, "next")
+        self.assertFalse(t.diagnosing)
+        # a bounded wait for a named external cause, then another diagnosis
+        t = tracker(diagnosing=True)
+        w = rs.Action("wait_requested", "limit", cause="executor-limit", until=T0 + 600)
+        out = rs.between_rounds(CFG, t, w, breaker, now=T0)
+        self.assertEqual((out.kind, out.until), ("wait", T0 + 600))
+        self.assertTrue(t.diagnosing)
+        # once its time has passed, the same unresolved cause twice in a row halts and names it
+        late = rs.Action("wait_requested", "limit", cause="executor-limit", until=T0 - 1)
+        self.assertEqual(rs.between_rounds(CFG, t, late, breaker, now=T0).until, T0)  # clamped
+        out = rs.between_rounds(CFG, t, late, breaker, now=T0)
+        self.assertEqual(out.kind, "halt")
+        self.assertIn("executor-limit", out.reason)
+
+    def test_a_frozen_main_escalates_even_when_diagnosing_rounds_continue(self):
+        t = tracker(main_at_start="a")
+        routes = []
+        for _ in range(6):
+            breaker = rs.after_round(CFG, t, recycled=False, main_sha="a")
+            routes.append(rs.between_rounds(CFG, t, rs.Action("next"), breaker).kind)
+            if routes[-1] == "halt":
+                break
+        self.assertEqual(routes, ["next", "next", "diagnose", "diagnose", "halt"])
+
+    def test_continue_without_progress_keeps_the_count_and_progress_resets_it(self):
+        t = tracker(main_at_start="a", diagnosing=True, last_cause="no-advance", repeats=1)
+        rs.between_rounds(CFG, t, rs.Action("next"), None)  # continue, no breaker, no advance
+        self.assertEqual((t.last_cause, t.repeats), ("no-advance", 1))
+        breaker = rs.after_round(CFG, t, recycled=False, main_sha="b")  # main advanced
+        self.assertIsNone(breaker)
+        self.assertEqual(rs.between_rounds(CFG, t, rs.Action("next"), breaker).kind, "next")
+        self.assertEqual((t.repeats, t.last_cause, t.diagnosing), (0, "", False))
+
+    def test_a_pending_external_wait_never_escalates_until_its_time_has_passed(self):
+        t = tracker(diagnosing=True)
+        w = rs.Action("wait_requested", "l", cause="executor-limit", until=T0 + 5 * CFG.wait_max_s)
+        for _ in range(4):
+            self.assertEqual(rs.between_rounds(CFG, t, w, None, now=T0).kind, "wait")
+        past = rs.Action("wait_requested", "l", cause="executor-limit", until=T0 - 1)
+        self.assertEqual(rs.between_rounds(CFG, t, past, None, now=T0).kind, "wait")
+        self.assertEqual(rs.between_rounds(CFG, t, past, None, now=T0).kind, "halt")
+
+    def test_a_halt_without_a_cause_code_uses_one_stable_cause(self):
+        a = rs.decide(CFG, tracker(), obs(1, sentinel={"outcome": "halt", "reason": "first"}))
+        b = rs.decide(CFG, tracker(), obs(1, sentinel={"outcome": "halt", "reason": "other"}))
+        self.assertEqual((a.cause, b.cause), ("unspecified", "unspecified"))
+
+    def test_a_different_cause_does_not_count_as_a_repeat(self):
+        t = tracker()
+        rs.between_rounds(CFG, t, rs.Action("halt_requested", "a", cause="tool-broken"), None)
+        out = rs.between_rounds(CFG, t, rs.Action("halt_requested", "b", cause="other"), None)
+        self.assertEqual(out.kind, "diagnose")
+
+    def test_a_wait_is_capped(self):
+        t = tracker(diagnosing=True)
+        w = rs.Action("wait_requested", "r", cause="c", until=T0 + 10 * CFG.wait_max_s)
+        self.assertEqual(rs.between_rounds(CFG, t, w, None, now=T0).until, T0 + CFG.wait_max_s)
 
     def test_overrides_shorten_timers_and_reject_unknown_keys(self):
         self.assertEqual(rs.with_overrides(CFG, ["silence_s=60"]).silence_s, 60)
@@ -146,6 +225,51 @@ class StateTests(unittest.TestCase):
             patcher = mock.patch.object(rs, name, self.tmp)
             patcher.start()
             self.addCleanup(patcher.stop)
+
+    def test_a_diagnosing_round_gets_the_diagnose_prompt(self):
+        sent = []
+
+        class Recording(FakeHerdr):
+            def new_tab(self):
+                return "t", "p"
+
+            def start(self, *_a):
+                return None
+
+            def prompt(self, text):
+                sent.append(text)
+                return 0, ""
+
+        sup = rs.Supervisor(CFG, (), Recording([]))
+        sup.t = rs.Tracker(diagnosing=True, diagnose_reason="main unchanged across 3 rounds")
+        with mock.patch.object(rs.time, "sleep"), mock.patch.object(rs, "main_sha", lambda _r: "a"):
+            sup.begin_round(5)
+        self.assertIn("DIAGNOSING ROUND", sent[0])
+        self.assertIn("main unchanged across 3 rounds", sent[0])
+        sup.t = rs.Tracker()
+        with mock.patch.object(rs.time, "sleep"), mock.patch.object(rs, "main_sha", lambda _r: "a"):
+            sup.begin_round(6)
+        self.assertNotIn("DIAGNOSING ROUND", sent[1])
+
+    def test_a_wait_obeys_the_operator_stop(self):
+        sup = rs.Supervisor(rs.with_overrides(CFG, ["poll_s=0"]), (), FakeHerdr([]))
+        (self.tmp / "STOP").touch()
+        route = rs.Action("wait", "r", cause="executor-limit", until=rs.time.time() + 3600)
+        with mock.patch.object(rs.time, "sleep"):
+            self.assertFalse(sup.wait_until(route))
+        self.assertIn("operator stop", (self.tmp / "HALT").read_text())
+
+    def test_complete_records_a_wait_with_its_cause_and_time(self):
+        self.open_round(1.0)
+        (self.tmp / "HANDOFF.md").write_text("x")
+        ok = lambda _c, _t: (0, "")  # noqa: E731
+        self.assertEqual(rs.complete("wait", "limit", ok), 2)  # a wait needs a cause
+        self.assertEqual(
+            rs.complete("wait", "limit", ok, cause="executor-limit", until="2030-01-01T08:00:00Z"), 0
+        )
+        sentinel = rs.read_sentinel(7)
+        self.assertEqual((sentinel["outcome"], sentinel["cause"]), ("wait", "executor-limit"))
+        self.assertGreater(sentinel["until"], 1_700_000_000)
 
     def open_round(self, started):
         (self.tmp / "current.json").write_text(json.dumps({"round": 7, "started": started}))
@@ -214,6 +338,14 @@ class StateTests(unittest.TestCase):
         (self.tmp / "HANDOFF.md").write_text("x")
         self.assertEqual(rs.complete("continue", "", lambda _c, _t: (0, "")), 1)
         self.assertFalse((self.tmp / "complete.json").exists())
+
+    def test_complete_refuses_a_halt_without_a_cause_and_a_bad_until(self):
+        self.open_round(1.0)
+        (self.tmp / "HANDOFF.md").write_text("x")
+        ok = lambda _c, _t: (0, "")  # noqa: E731
+        self.assertEqual(rs.complete("halt", "why", ok), 2)
+        self.assertEqual(rs.complete("wait", "why", ok, cause="c", until="not-a-time"), 2)
+        self.assertEqual(rs.complete("halt", "why", ok, cause="tool-broken"), 0)
 
     def test_complete_validates_with_round_py_and_records_the_round(self):
         self.open_round(1.0)
@@ -308,6 +440,51 @@ class RepoNameTests(unittest.TestCase):
         for step in ("L status", "L start <lane>", "L recorded <lane>", "L cleanup --go"):
             self.assertIn(step, prompt)
         self.assertTrue(rs.LANES.is_file())
+
+    def test_harness_rules_are_absent_without_the_key(self):
+        self.assertEqual(rs.harness_rules({}), "")
+        self.assertEqual(rs.harness_rules({"supervisor": {}}), "")
+
+    def test_harness_rules_order_fallback_handoff_and_cwd(self):
+        cfg = {
+            "supervisor": {
+                "lane_harnesses": ["codex", "claude"],
+                "harness_commands": {"codex": 'codex exec -C {worktree} "{task}"'},
+            }
+        }
+        text = rs.harness_rules(cfg)
+        self.assertLess(text.index("codex"), text.index("claude"))
+        self.assertIn('codex exec -C {worktree} "{task}"', text)
+        for phrase in ("usage limit", "next", "HANDOFF.md", "--cwd <lane worktree>"):
+            self.assertIn(phrase, text)
+        self.assertIn("never wait or halt", text)
+
+    def test_round_prompt_merges_only_through_the_guard(self):
+        prompt = rs.ROUND_PROMPT.format(round=1, script="s", lane_prefix="p-", lanes="l")
+        self.assertIn("merge_guard.py", prompt)
+        self.assertIn("gh pr merge", prompt)
+
+    def test_begin_round_appends_the_configured_harness_rules(self):
+        sent = []
+
+        class Recording(FakeHerdr):
+            def new_tab(self):
+                return "t", "p"
+
+            def start(self, *_a):
+                return None
+
+            def prompt(self, text):
+                sent.append(text)
+                return 0, ""
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        cfg = {"supervisor": {"lane_harnesses": ["opencode"]}}
+        with mock.patch.object(rs, "STATE", Path(tmp.name)), mock.patch.object(rs, "CONFIG", cfg), \
+                mock.patch.object(rs.time, "sleep"), mock.patch.object(rs, "main_sha", lambda _r: "a"):
+            rs.Supervisor(CFG, (), Recording([])).begin_round(1)
+        self.assertIn("opencode", sent[0])
 
     def test_round_prompt_names_lanes_with_the_repo_prefix(self):
         prompt = rs.ROUND_PROMPT.format(round=1, script="s", lane_prefix=rs.LANE_PREFIX, lanes="l")
