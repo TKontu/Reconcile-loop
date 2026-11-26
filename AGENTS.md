@@ -5,7 +5,7 @@ Read README.md and SPEC.md. Keep one maintained version; expanded features remai
 `docs/standalone-patterns` branch until a demonstrated need justifies adding them here.
 
 - `.agent/commands/` owns phase procedures and optional helpers (`status`, `pr-verdict`,
-  `loop-manager`); runner
+  `loop-manager`); `scripts/merge_guard.py` is an optional merge path no phase depends on; runner
   wrappers and `.claude/agents/` subagents point there or stay runner-specific. Avoid duplicate policy.
 - Preserve the protocol's isolation, evidence and reconciliation guarantees. Keep project-specific
   rules and generic development helpers out of the lean core. Unattended supervision lives only in

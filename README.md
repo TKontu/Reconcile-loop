@@ -54,7 +54,10 @@ records consistent. It does not start agents, run tests or merge. The [worked ex
 shows a full round with commands.
 
 Optional helpers: [status](.agent/commands/status.md) reports on the backlog without changing anything,
-and [pr-verdict](.agent/commands/pr-verdict.md) gives an advisory review of one PR. Claude Code also
+and [pr-verdict](.agent/commands/pr-verdict.md) gives an advisory review of one PR.
+[`scripts/merge_guard.py`](scripts/merge_guard.py) merges one reviewed PR only at its reviewed head
+and leaves operator-owned paths to the operator; deny raw `gh pr merge` in your agent settings to
+make it the only merge path for a planner with delegated merge authority. Claude Code also
 gets three subagents (review-lens, ci-watcher, quick-fixer). Their Codex skills read the same files
 under `.claude/agents/`, so copy that folder for Codex too.
 

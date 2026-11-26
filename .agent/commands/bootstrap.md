@@ -9,8 +9,9 @@ Input: project repository and its architecture, README and backlog.
    and `SPEC.md`, plus `examples/one-round.md` for its linked walkthrough. Optionally install `.agents/skills/` (the router, named command skills and helper skills), the `.claude/commands/`
    wrappers and `.claude/agents/` subagents. They reference the same procedures.
    `scripts/round_supervisor.py` and `scripts/lanes.py` with `.agent/supervisor.md` are a further
-   option for unattended rounds;
-   nothing else depends on it. Preserve these relative paths and retain the
+   option for unattended rounds; `scripts/merge_guard.py` is an optional merge path for delegated
+   merge authority.
+   Nothing else depends on them. Preserve these relative paths and retain the
    pack’s MIT notice with copied materials; do not replace an existing project’s license.
 3. Merge [the project contract](../../templates/AGENTS.md) into the target AGENTS.md; do not copy
    the pattern library's contributor contract. Adapt `.agent/config.example.toml` into
