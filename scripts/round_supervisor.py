@@ -257,7 +257,7 @@ def decide(cfg: Config, t: Tracker, o: Observation) -> Action:
         if o.stop_after_round:
             return Action("halt", "operator stop after round")
         outcome, reason = o.sentinel.get("outcome"), str(o.sentinel.get("reason", ""))
-        cause = str(o.sentinel.get("cause") or reason)
+        cause = str(o.sentinel.get("cause") or "unspecified")  # stable, so repeats count
         if outcome == "halt":  # diagnosed first; only an unresolved repeat really halts
             return Action("halt_requested", f"round asked to halt: {reason}", cause=cause)
         if outcome == "wait":
@@ -305,9 +305,11 @@ def after_round(cfg: Config, t: Tracker, *, recycled: bool, main_sha: str) -> Ac
     if advanced:
         t.last_cause, t.repeats = "", 0
     if t.recycles >= cfg.max_recycles:
-        return Action("diagnose", f"{t.recycles} consecutive recycled rounds")
+        return Action("diagnose", f"{t.recycles} consecutive recycled rounds", cause="recycled")
     if t.no_advance >= cfg.max_no_advance:
-        return Action("diagnose", f"{BRANCH} unchanged across {t.no_advance} rounds")
+        return Action(
+            "diagnose", f"{BRANCH} unchanged across {t.no_advance} rounds", cause="no-advance"
+        )
     return None
 
 
@@ -315,20 +317,36 @@ def between_rounds(
     cfg: Config, t: Tracker, ended: Action, breaker: Action | None, *, now: float | None = None
 ) -> Action:
     """Route the round that just ended: the next round, a diagnosing round, a bounded wait for a
-    named external cause, or a real halt when the same cause stays unresolved."""
+    named external cause, or a real halt when the same cause stays unresolved.
+
+    Causes counted toward the halt: a planner's halt or wait cause, and the breaker's own cause
+    (`no-advance`, `recycled`) when a diagnosing round ended without moving the default branch.
+    A wait whose `until` is still in the future is pending, not unresolved, so it never escalates.
+    A round ending `continue` keeps the count; only an advance of the branch (after_round) resets it.
+    """
+    start = time.time() if now is None else now
+
+    def unresolved(cause: str) -> bool:
+        t.repeats = t.repeats + 1 if cause == t.last_cause else 1
+        t.last_cause = cause
+        return t.repeats >= cfg.max_same_cause
+
     if ended.kind in ("halt_requested", "wait_requested"):
-        t.repeats = t.repeats + 1 if ended.cause == t.last_cause else 1
-        t.last_cause = ended.cause
-        if t.repeats >= cfg.max_same_cause:
+        pending = ended.kind == "wait_requested" and (ended.until or 0) > start
+        if pending:
+            t.last_cause = ended.cause
+        elif unresolved(ended.cause):
             t.diagnosing = False
             return Action("halt", f"unresolved after diagnosis: {ended.cause} ({ended.reason})")
         t.diagnosing, t.diagnose_reason = True, ended.reason
         if ended.kind == "wait_requested":
-            start = time.time() if now is None else now
             until = min(ended.until or start + cfg.wait_max_s, start + cfg.wait_max_s)
-            return Action("wait", ended.reason, cause=ended.cause, until=until)
+            return Action("wait", ended.reason, cause=ended.cause, until=max(until, start))
         return Action("diagnose", ended.reason, cause=ended.cause)
     if breaker is not None:
+        if t.diagnosing and unresolved(breaker.cause):
+            t.diagnosing = False
+            return Action("halt", f"unresolved after diagnosis: {breaker.cause} ({breaker.reason})")
         t.diagnosing, t.diagnose_reason = True, breaker.reason
         return breaker
     t.diagnosing = False
@@ -938,8 +956,8 @@ def complete(
     if rc:
         print(f"HANDOFF.md is invalid:\n{out}", file=sys.stderr)
         return 1
-    if outcome == "halt" and not reason:
-        print("--outcome halt needs --reason", file=sys.stderr)
+    if outcome == "halt" and not (cause and reason):
+        print("--outcome halt needs --cause and --reason", file=sys.stderr)
         return 2
     if outcome == "wait" and not (cause and reason):
         print("--outcome wait needs --cause and --reason", file=sys.stderr)

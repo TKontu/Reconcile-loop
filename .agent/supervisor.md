@@ -67,7 +67,7 @@ python3 $L cleanup           # dry run; --go acts
 | 2 consecutive recycles, or the default branch unchanged over 3 rounds | | Diagnosing round (below) |
 | A planner's `complete --outcome halt` | | Diagnosing round (below) |
 | A planner's `complete --outcome wait --cause C [--until T]` | up to 12 h | Wait until T, then diagnose again |
-| The same cause unresolved twice in a row | | HALT and notify, naming the cause |
+| The same cause unresolved twice in a row (a planner's halt or wait cause, or the breaker's own `no-advance`/`recycled` when a diagnosing round left the default branch unmoved) | | HALT and notify, naming the cause |
 | Operator `stop` or `stop-after-round` | | HALT |
 
 **Diagnosing rounds.** A loop that makes no progress is fixed by reconciliation, not by retry or a
@@ -77,8 +77,11 @@ diagnosing preamble: reconcile the failed or empty rounds; classify the cause wi
 `other`); act on it (switch harness, re-rank or split items, repair a tool, turn a block into a
 precise owed item); then plan whatever that unlocks. Only when an external event alone can unblock
 every lane does the round end with `wait`, naming the cause and, if known, when it clears (ISO
-time; capped at `wait_max_s`). The stop controls are obeyed during a wait. An advance of the
-default branch resets the cause count. The diagnosing state is held in memory, so a supervisor
+time; capped at `wait_max_s`). The stop controls are obeyed during a wait. A halt or wait without
+`--cause` is refused; a missing cause in a sentinel counts as `unspecified`. A wait whose `until`
+is still in the future is pending, not unresolved, so a multi-day limit waits in `wait_max_s`
+steps without halting; once its time has passed the same cause escalates. Only an advance of the
+default branch resets the cause count; a round ending `continue` without moving it does not. The diagnosing state is held in memory, so a supervisor
 restarted mid-diagnosis forgets the previous cause.
 
 Only outward progress refunds nudges, so a session that merely keeps its transcript busy cannot
@@ -131,7 +134,8 @@ Check each item before a long `up`:
    tabs before removing its worktree, so the tab's shell does not pin the tree, and holds tabs
    outside a registered lane worktree. Nothing else to configure.
 5. **Stop controls.** Use `up --for <duration>` or `stop-after-round`; a halt names its cause in
-   `HALT` and on the dashboard.
+   `HALT` and on the dashboard. Expect a halt when the same cause survives two diagnosing rounds:
+   a round that ends `continue` without advancing the default branch does not reset the count.
 
 ## Operating it
 
