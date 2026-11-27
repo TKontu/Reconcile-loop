@@ -1,0 +1,15 @@
+{
+  "//": "EXAMPLE ONLY. The operator merges these rules into .claude/settings.local.json by hand; agents cannot grant themselves permissions. Keep only the harnesses you use. herdr pane run:* types any command into any pane: allow it only if that is acceptable here. Raw gh pr merge stays denied so merges go through the guard.",
+  "permissions": {
+    "allow": [
+      "Bash(python3 scripts/merge_guard.py:*)",
+      "Bash(claude -p:*)",
+      "Bash(opencode run:*)",
+      "Bash(herdr agent start:*)",
+      "Bash(herdr pane run:*)"
+    ],
+    "deny": [
+      "Bash(gh pr merge:*)"
+    ]
+  }
+}
